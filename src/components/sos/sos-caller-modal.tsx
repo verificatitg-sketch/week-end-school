@@ -411,70 +411,12 @@ export function SosCallerModal({ onClose }: { onClose: () => void }) {
         <div className="flex-1 overflow-y-auto">
           {step === 'form' && callerStatus === 'idle' ? (
             <div className="p-4 space-y-4">
-              {/* Admin Info Section */}
-              {primaryAdmin && (
-                <div className="bg-weds-blue-50 border border-weds-blue-100 rounded-xl p-3 space-y-2">
-                  <p className="text-xs font-semibold text-weds-blue-700 flex items-center gap-1">
-                    <Shield className="h-3.5 w-3.5" />
-                    Votre appel sera dirigé vers l&apos;administrateur :
-                  </p>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-weds-blue rounded-full flex items-center justify-center text-white shrink-0">
-                      <User className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="font-bold text-sm text-weds-blue-700">{primaryAdmin.name}</p>
-                        <Badge className="bg-weds-blue-100 text-weds-blue-700 border-0 text-[9px] px-1.5 py-0">
-                          {primaryAdmin.role}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-1 mt-0.5">
-                        <span className="text-[10px] text-weds-blue font-mono">
-                          ID: {primaryAdmin.id}
-                        </span>
-                      </div>
-                      {primaryAdmin.phone && (
-                        <p className="text-[10px] text-weds-blue mt-0.5">
-                          📞 {primaryAdmin.phone}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  {availableAdmins.length > 1 && (
-                    <p className="text-[10px] text-weds-blue">
-                      + {availableAdmins.length - 1} autre(s) admin(s) disponible(s)
-                    </p>
-                  )}
-                </div>
-              )}
-
               {/* Location Status */}
               <div className={`rounded-lg p-3 flex items-center gap-2 ${location ? 'bg-weds-blue-50' : 'bg-amber-50'}`}>
                 <MapPin className={`h-4 w-4 shrink-0 ${location ? 'text-weds-blue' : 'text-amber-600'}`} />
                 <span className={`text-xs ${location ? 'text-weds-blue-700' : 'text-amber-700'}`}>
                   {location ? `GPS: ${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}` : locationError || 'Localisation en cours...'}
                 </span>
-              </div>
-
-              {/* Caller info */}
-              <div className="space-y-2">
-                <p className="text-xs text-muted-foreground font-medium">Vos coordonnées (optionnel) :</p>
-                <Input
-                  placeholder="Votre nom"
-                  value={callerName}
-                  onChange={(e) => setCallerName(e.target.value)}
-                  className="h-9 text-sm"
-                  aria-label="Votre nom"
-                />
-                <Input
-                  placeholder="Votre téléphone"
-                  type="tel"
-                  value={callerPhone}
-                  onChange={(e) => setCallerPhone(e.target.value)}
-                  className="h-9 text-sm"
-                  aria-label="Votre téléphone"
-                />
               </div>
 
               <Separator />
