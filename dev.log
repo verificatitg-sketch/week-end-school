@@ -1,15 +1,10 @@
+[Thu Jun  4 10:41:19 UTC 2026] Starting server...
 ▲ Next.js 16.2.7
 - Local:         http://localhost:3000
-- Network:       http://0.0.0.0:3000
-✓ Ready in 0ms
-[Thu Jun  4 10:02:20 UTC 2026] WEDS server auto-restart loop started
-[Thu Jun  4 10:02:20 UTC 2026] Starting Next.js production server...
+- Network:       http://21.0.8.81:3000
+✓ Ready in 95ms
+[Thu Jun  4 10:43:46 UTC 2026] Starting...
 ▲ Next.js 16.2.7
 - Local:         http://localhost:3000
-- Network:       http://0.0.0.0:3000
-✓ Ready in 0ms
-[Thu Jun  4 10:11:38 UTC 2026] Server down, starting...
-▲ Next.js 16.2.7
-- Local:         http://localhost:3000
-- Network:       http://0.0.0.0:3000
-✓ Ready in 0ms
+- Network:       http://21.0.8.81:3000
+✓ Ready in 97ms

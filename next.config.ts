@@ -6,7 +6,6 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
-  output: "standalone",
   // Reduce memory usage for dev server
   experimental: {
     optimizePackageImports: [

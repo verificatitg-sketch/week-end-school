@@ -88,7 +88,7 @@ export async function GET(request: Request) {
       where.role = { name: role };
     }
 
-    const [users, total] = await Promise.all([
+    const [usersRaw, total] = await Promise.all([
       db.user.findMany({
         where,
         select: {
@@ -110,6 +110,12 @@ export async function GET(request: Request) {
       }),
       db.user.count({ where }),
     ]);
+
+    // Map role object to role name string for frontend compatibility
+    const users = usersRaw.map((u) => ({
+      ...u,
+      role: (u.role as { name: string } | null)?.name || 'UTILISATEUR',
+    }));
 
     return NextResponse.json({
       users,
@@ -204,7 +210,7 @@ export async function PATCH(request: Request) {
     }
 
     // Update the user
-    const updatedUser = await db.user.update({
+    const updatedUserRaw = await db.user.update({
       where: { id: userId },
       data: updateData,
       select: {
@@ -222,6 +228,12 @@ export async function PATCH(request: Request) {
         },
       },
     });
+
+    // Map role object to role name string for frontend compatibility
+    const updatedUser = {
+      ...updatedUserRaw,
+      role: (updatedUserRaw.role as { name: string } | null)?.name || 'UTILISATEUR',
+    };
 
     // Create audit log
     const details: Record<string, unknown> = { userId };
