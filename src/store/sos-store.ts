@@ -226,6 +226,9 @@ export const useSosStore = create<SosState>((set, get) => ({
 
     socketInstance.on('disconnect', () => {
       set({ isConnected: false });
+      // Note: SOS disconnect does NOT set isOfflineMode - that should only
+      // be set when the user explicitly triggers SOS and has no internet.
+      // The rest of the app should continue working normally.
     });
 
     // ==================== CALLER EVENTS ====================

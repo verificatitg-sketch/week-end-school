@@ -193,7 +193,32 @@ export function isOnline(
   onOnline?: () => void,
   onOffline?: () => void
 ): boolean {
-  const online = typeof navigator !== 'undefined' ? navigator.onLine : false;
+  // In SSR or non-browser environments, default to true (optimistic)
+  // to avoid false "offline" states that block the app
+  if (typeof navigator === 'undefined' || typeof window === 'undefined') {
+    return true;
+  }
+  
+  const online = navigator.onLine;
+  
+  // In the sandbox preview iframe, navigator.onLine may incorrectly
+  // return false. If we can reach the server, we're online.
+  // We trust navigator.onLine in real browsers but add a safety check.
+  if (!online && typeof window !== 'undefined') {
+    // Double-check: if the page was loaded, we must have had connectivity at some point
+    // Don't immediately assume offline just because navigator.onLine is false
+    // in sandbox/iframe environments
+    try {
+      // If document is ready and we're in an iframe, navigator.onLine might be unreliable
+      const isInIframe = window.self !== window.top;
+      if (isInIframe) {
+        return true; // Optimistic for iframes
+      }
+    } catch {
+      // Cross-origin iframe check failed — we're in an iframe
+      return true; // Be optimistic
+    }
+  }
 
   // Set up event listeners if callbacks are provided
   if (typeof window !== 'undefined') {

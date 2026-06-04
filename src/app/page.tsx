@@ -581,11 +581,15 @@ export default function WEDSApp() {
     }
   }, [mounted, isAuthenticated, currentView, setView]);
 
-  // Connect SOS socket when user is authenticated
+  // Connect SOS socket when user is authenticated (non-blocking — failure won't affect app)
   React.useEffect(() => {
     if (mounted && isAuthenticated && user && !sosConnected) {
-      const roleName = (user.role as Record<string, unknown>)?.name as string || 'BENEFICIAIRE';
-      connectSos(user.id, user.name, roleName);
+      try {
+        const roleName = (user.role as Record<string, unknown>)?.name as string || 'BENEFICIAIRE';
+        connectSos(user.id, user.name, roleName);
+      } catch {
+        // SOS WebSocket connection failure should NOT block the app
+      }
     }
   }, [mounted, isAuthenticated, user, sosConnected, connectSos]);
 
