@@ -7,7 +7,7 @@ async function getAuthUser(request: Request) {
   if (!token) return null;
   const payload = await verifyToken(token);
   if (!payload) return null;
-  const user = await db.user.findUnique({ id: payload.userId as string });
+  const user = await turso.user.findUnique({ id: payload.userId as string });
   return user;
 }
 
@@ -85,15 +85,15 @@ export async function POST(request: Request) {
     }
 
     // Update role to MENTOR
-    const mentorRole = await db.role.findUnique({ name: 'MENTOR' });
+    const mentorRole = await turso.role.findUnique({ name: 'MENTOR' });
     if (!mentorRole) {
       // Create the role if it doesn't exist
-      const newRole = await db.role.create({ name: 'MENTOR', description: 'Mentor role' });
+      const newRole = await turso.role.create({ name: 'MENTOR', description: 'Mentor role' });
       if (newRole) {
-        await db.user.update({ id: user.id }, { role_id: newRole.id });
+        await turso.user.update({ id: user.id }, { role_id: newRole.id });
       }
     } else {
-      await db.user.update({ id: user.id }, { role_id: mentorRole.id });
+      await turso.user.update({ id: user.id }, { role_id: mentorRole.id });
     }
 
     const mentorId = await turso.insert('mentors', {

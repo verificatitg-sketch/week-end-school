@@ -8,7 +8,7 @@ async function getAuthUser(request: Request) {
   const payload = await verifyToken(token);
   if (!payload) return null;
   const { db } = await import('@/lib/db');
-  const user = await db.user.findUnique({ id: payload.userId as string });
+  const user = await turso.user.findUnique({ id: payload.userId as string });
   return user;
 }
 

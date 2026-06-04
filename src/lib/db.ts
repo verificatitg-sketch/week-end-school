@@ -1,22 +1,31 @@
 import { createClient, type Client } from '@libsql/client';
 
-// Turso database client
-const tursoUrl = process.env.TURSO_DATABASE_URL!;
-const tursoAuthToken = process.env.TURSO_AUTH_TOKEN!;
-
+// Turso database client - lazy initialization to ensure env vars are available
 let _db: Client | null = null;
 
 export function getDb(): Client {
   if (!_db) {
-    _db = createClient({
-      url: tursoUrl,
-      authToken: tursoAuthToken,
-    });
+    const url = process.env.TURSO_DATABASE_URL;
+    const token = process.env.TURSO_AUTH_TOKEN;
+    if (!url || !token) {
+      throw new Error('TURSO_DATABASE_URL and TURSO_AUTH_TOKEN environment variables are required');
+    }
+    _db = createClient({ url, authToken: token });
   }
   return _db;
 }
 
-export const db = getDb();
+// Lazy getter - only creates client when first accessed
+export const db = new Proxy({} as Client, {
+  get(_target, prop, receiver) {
+    const actualDb = getDb();
+    const value = Reflect.get(actualDb, prop, receiver);
+    if (typeof value === 'function') {
+      return value.bind(actualDb);
+    }
+    return value;
+  },
+});
 
 // ==================== Helper Types ====================
 
@@ -62,11 +71,11 @@ export const turso = {
     findUnique: async (where: { id?: string; name?: string }): Promise<DbRole | null> => {
       try {
         if (where.id) {
-          const res = await db.execute({ sql: 'SELECT * FROM roles WHERE id = ?', args: [where.id] });
+          const res = await getDb().execute({ sql: 'SELECT * FROM roles WHERE id = ?', args: [where.id] });
           return res.rows[0] as unknown as DbRole || null;
         }
         if (where.name) {
-          const res = await db.execute({ sql: 'SELECT * FROM roles WHERE name = ?', args: [where.name] });
+          const res = await getDb().execute({ sql: 'SELECT * FROM roles WHERE name = ?', args: [where.name] });
           return res.rows[0] as unknown as DbRole || null;
         }
         return null;
@@ -86,14 +95,14 @@ export const turso = {
             args.push(where.name);
           }
         }
-        const res = await db.execute({ sql, args });
+        const res = await getDb().execute({ sql, args });
         return res.rows as unknown as DbRole[];
       } catch { return []; }
     },
     create: async (data: { name: string; description?: string }): Promise<DbRole | null> => {
       try {
         const id = crypto.randomUUID();
-        await db.execute({
+        await getDb().execute({
           sql: 'INSERT INTO roles (id, name, description) VALUES (?, ?, ?)',
           args: [id, data.name, data.description || null],
         });
@@ -107,7 +116,7 @@ export const turso = {
     findUnique: async (where: { id?: string; email?: string }): Promise<DbUser | null> => {
       try {
         if (where.email) {
-          const res = await db.execute({
+          const res = await getDb().execute({
             sql: `SELECT u.*, r.name as role_name, r.description as role_description 
                    FROM users u LEFT JOIN roles r ON u.role_id = r.id 
                    WHERE u.email = ?`,
@@ -116,7 +125,7 @@ export const turso = {
           return res.rows[0] as unknown as DbUser || null;
         }
         if (where.id) {
-          const res = await db.execute({
+          const res = await getDb().execute({
             sql: `SELECT u.*, r.name as role_name, r.description as role_description 
                    FROM users u LEFT JOIN roles r ON u.role_id = r.id 
                    WHERE u.id = ?`,
@@ -192,7 +201,7 @@ export const turso = {
           args.push(options.offset);
         }
 
-        const res = await db.execute({ sql, args });
+        const res = await getDb().execute({ sql, args });
         return res.rows as unknown as DbUser[];
       } catch { return []; }
     },
@@ -218,7 +227,7 @@ export const turso = {
           sql += ' LEFT JOIN roles r ON u.role_id = r.id WHERE ' + conditions.join(' AND ');
         }
 
-        const res = await db.execute({ sql, args });
+        const res = await getDb().execute({ sql, args });
         return (res.rows[0] as Record<string, unknown>)?.count as number || 0;
       } catch { return 0; }
     },
@@ -230,7 +239,7 @@ export const turso = {
         const placeholders = fields.map(() => '?').join(',');
         const fieldNames = fields.join(', ');
 
-        await db.execute({
+        await getDb().execute({
           sql: `INSERT INTO users (${fieldNames}) VALUES (${placeholders})`,
           args: values,
         });
@@ -241,7 +250,7 @@ export const turso = {
       try {
         const setClauses = Object.keys(data).map(k => `${k} = ?`);
         const values = [...Object.values(data), where.id];
-        await db.execute({
+        await getDb().execute({
           sql: `UPDATE users SET ${setClauses.join(', ')}, updated_at = datetime('now') WHERE id = ?`,
           args: values,
         });
@@ -249,7 +258,7 @@ export const turso = {
       } catch { return null; }
     },
     delete: async (where: { id: string }): Promise<void> => {
-      await db.execute({ sql: 'DELETE FROM users WHERE id = ?', args: [where.id] });
+      await getDb().execute({ sql: 'DELETE FROM users WHERE id = ?', args: [where.id] });
     },
   },
 
@@ -257,7 +266,7 @@ export const turso = {
   course: {
     findUnique: async (where: { id: string }) => {
       try {
-        const res = await db.execute({ sql: 'SELECT * FROM courses WHERE id = ?', args: [where.id] });
+        const res = await getDb().execute({ sql: 'SELECT * FROM courses WHERE id = ?', args: [where.id] });
         return res.rows[0] || null;
       } catch { return null; }
     },
@@ -289,7 +298,7 @@ export const turso = {
         if (options?.limit) { sql += ' LIMIT ?'; args.push(options.limit); }
         if (options?.offset) { sql += ' OFFSET ?'; args.push(options.offset); }
 
-        const res = await db.execute({ sql, args });
+        const res = await getDb().execute({ sql, args });
         return res.rows;
       } catch { return []; }
     },
@@ -307,7 +316,7 @@ export const turso = {
         }
         if (conditions.length > 0) sql += ' WHERE ' + conditions.join(' AND ');
 
-        const res = await db.execute({ sql, args });
+        const res = await getDb().execute({ sql, args });
         return (res.rows[0] as Record<string, unknown>)?.count as number || 0;
       } catch { return 0; }
     },
@@ -316,7 +325,7 @@ export const turso = {
         const id = crypto.randomUUID();
         const fields = ['id', ...Object.keys(data)];
         const values = [id, ...Object.values(data)];
-        await db.execute({
+        await getDb().execute({
           sql: `INSERT INTO courses (${fields.join(', ')}) VALUES (${fields.map(() => '?').join(',')})`,
           args: values,
         });
@@ -327,7 +336,7 @@ export const turso = {
       try {
         const setClauses = Object.keys(data).map(k => `${k} = ?`);
         const values = [...Object.values(data), where.id];
-        await db.execute({
+        await getDb().execute({
           sql: `UPDATE courses SET ${setClauses.join(', ')}, updated_at = datetime('now') WHERE id = ?`,
           args: values,
         });
@@ -335,7 +344,7 @@ export const turso = {
       } catch { return null; }
     },
     delete: async (where: { id: string }) => {
-      await db.execute({ sql: 'DELETE FROM courses WHERE id = ?', args: [where.id] });
+      await getDb().execute({ sql: 'DELETE FROM courses WHERE id = ?', args: [where.id] });
     },
   },
 
@@ -348,7 +357,7 @@ export const turso = {
     const id = crypto.randomUUID();
     const fields = ['id', ...Object.keys(data)];
     const values = [id, ...Object.values(data)];
-    await db.execute({
+    await getDb().execute({
       sql: `INSERT INTO ${table} (${fields.join(', ')}) VALUES (${fields.map(() => '?').join(',')})`,
       args: values,
     });
@@ -358,18 +367,18 @@ export const turso = {
   update: async (table: string, where: { id: string }, data: Record<string, unknown>) => {
     const setClauses = Object.keys(data).map(k => `${k} = ?`);
     const values = [...Object.values(data), where.id];
-    await db.execute({
+    await getDb().execute({
       sql: `UPDATE ${table} SET ${setClauses.join(', ')}, updated_at = datetime('now') WHERE id = ?`,
       args: values,
     });
   },
 
   delete: async (table: string, where: { id: string }) => {
-    await db.execute({ sql: `DELETE FROM ${table} WHERE id = ?`, args: [where.id] });
+    await getDb().execute({ sql: `DELETE FROM ${table} WHERE id = ?`, args: [where.id] });
   },
 
   findById: async (table: string, id: string) => {
-    const res = await db.execute({ sql: `SELECT * FROM ${table} WHERE id = ?`, args: [id] });
+    const res = await getDb().execute({ sql: `SELECT * FROM ${table} WHERE id = ?`, args: [id] });
     return res.rows[0] || null;
   },
 
@@ -400,7 +409,7 @@ export const turso = {
     if (options?.limit) { sql += ' LIMIT ?'; args.push(options.limit); }
     if (options?.offset) { sql += ' OFFSET ?'; args.push(options.offset); }
 
-    const res = await db.execute({ sql, args });
+    const res = await getDb().execute({ sql, args });
     return res.rows;
   },
 
@@ -417,7 +426,7 @@ export const turso = {
     }
     if (conditions.length > 0) sql += ' WHERE ' + conditions.join(' AND ');
 
-    const res = await db.execute({ sql, args });
+    const res = await getDb().execute({ sql, args });
     return (res.rows[0] as Record<string, unknown>)?.count as number || 0;
   },
 };

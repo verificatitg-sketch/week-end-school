@@ -19,11 +19,11 @@ export async function POST() {
     const roles: Record<string, string> = {};
     for (const name of roleNames) {
       // Check if role exists
-      const existing = await db.role.findUnique({ name });
+      const existing = await turso.role.findUnique({ name });
       if (existing) {
         roles[name] = existing.id;
       } else {
-        const newRole = await db.role.create({ name, description: `Role: ${name}` });
+        const newRole = await turso.role.create({ name, description: `Role: ${name}` });
         if (newRole) {
           roles[name] = newRole.id;
         }
@@ -32,12 +32,12 @@ export async function POST() {
 
     // Create super admin user
     const superAdminPassword = await hashPassword('admin123');
-    const existingAdmin = await db.user.findUnique({ email: 'blunaantoine@gmail.com' });
+    const existingAdmin = await turso.user.findUnique({ email: 'blunaantoine@gmail.com' });
 
     let adminId: string;
     if (existingAdmin) {
       adminId = existingAdmin.id;
-      await db.user.update({ id: adminId }, { role_id: roles.SUPER_ADMIN, is_verified: 1 });
+      await turso.user.update({ id: adminId }, { role_id: roles.SUPER_ADMIN, is_verified: 1 });
     } else {
       adminId = await turso.insert('users', {
         email: 'blunaantoine@gmail.com',
@@ -52,7 +52,7 @@ export async function POST() {
 
     // Create regular user
     const userPassword = await hashPassword('user123');
-    const existingUser = await db.user.findUnique({ email: 'user@weds.togo' });
+    const existingUser = await turso.user.findUnique({ email: 'user@weds.togo' });
 
     let regularUserId: string;
     if (existingUser) {
@@ -71,7 +71,7 @@ export async function POST() {
 
     // Create formateur user
     const formateurPassword = await hashPassword('formateur123');
-    const existingFormateur = await db.user.findUnique({ email: 'formateur@weds.togo' });
+    const existingFormateur = await turso.user.findUnique({ email: 'formateur@weds.togo' });
 
     let formateurId: string;
     if (existingFormateur) {
@@ -90,7 +90,7 @@ export async function POST() {
 
     // Create volunteer user
     const volunteerPassword = await hashPassword('volunteer123');
-    const existingVolunteer = await db.user.findUnique({ email: 'volunteer@weds.togo' });
+    const existingVolunteer = await turso.user.findUnique({ email: 'volunteer@weds.togo' });
 
     let volunteerId: string;
     if (existingVolunteer) {
@@ -193,7 +193,7 @@ export async function POST() {
     ];
 
     for (const m of mentorUsers) {
-      const existingMentorUser = await db.user.findUnique({ email: m.email });
+      const existingMentorUser = await turso.user.findUnique({ email: m.email });
 
       if (!existingMentorUser) {
         const mPassword = await hashPassword('mentor123');

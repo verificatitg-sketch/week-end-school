@@ -35,7 +35,7 @@ export async function GET() {
     // Check if admin user exists
     let adminExists = false;
     if (existing.includes('users') && existing.includes('roles')) {
-      const adminRole = await db.role.findUnique({ name: 'SUPER_ADMIN' });
+      const adminRole = await turso.role.findUnique({ name: 'SUPER_ADMIN' });
       if (adminRole) {
         const adminUsers = await turso.query(
           'SELECT id FROM users WHERE role_id = ? LIMIT 1',
