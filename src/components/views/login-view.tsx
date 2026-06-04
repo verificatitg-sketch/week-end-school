@@ -113,18 +113,6 @@ export function LoginView() {
           </DropdownMenu>
         </div>
 
-        {/* SOS Button - Top Right */}
-        <div className="absolute top-3 right-3 z-20">
-          <button
-            onClick={() => setSosOpen(true)}
-            className="relative w-12 h-12 rounded-full flex flex-col items-center justify-center bg-red-500 text-white shadow-lg hover:bg-red-600 transition-all active:scale-95 cursor-pointer"
-            aria-label="SOS Urgence"
-          >
-            <Siren className="h-5 w-5" />
-            <span className="text-[8px] font-black leading-none mt-0.5">SOS</span>
-          </button>
-        </div>
-
         {/* Logo Section */}
         <div className="relative z-10 flex flex-col items-center mt-4">
           <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-full overflow-hidden flex items-center justify-center bg-white shadow-xl ring-4 ring-white/30 mb-4">
@@ -141,6 +129,18 @@ export function LoginView() {
           </p>
         </div>
 
+        {/* SOS Button - Rectangular, full width, below motto in blue header */}
+        <div className="relative z-10 w-full max-w-[280px] mt-5">
+          <button
+            onClick={() => setSosOpen(true)}
+            className="w-full h-14 rounded-xl flex items-center justify-center gap-2 bg-red-500 text-white font-bold text-sm shadow-lg shadow-red-500/30 hover:bg-red-600 hover:shadow-red-500/50 transition-all active:scale-[0.98] cursor-pointer"
+            aria-label="SOS Urgence"
+          >
+            <Siren className="h-5 w-5" />
+            <span>SOS</span>
+          </button>
+        </div>
+
         {/* Curved bottom edge */}
         <div className="absolute bottom-0 left-0 right-0 h-6 bg-white rounded-t-[2rem]" />
       </div>
@@ -148,9 +148,7 @@ export function LoginView() {
       {/* Form Section - White */}
       <div className="flex-1 px-6 -mt-2">
         <div className="w-full max-w-sm mx-auto">
-          {/* Welcome text removed as per design - form starts directly */}
-
-          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          <form onSubmit={handleSubmit} className="space-y-5" noValidate>
             {/* Email field */}
             <div className="space-y-1.5">
               <div className="relative">
