@@ -124,7 +124,7 @@ export const translations = {
     'nav.alerts': 'Alertes',
     'nav.sos': 'SOS Urgence',
     'nav.admin': 'Administration',
-    'nav.profile': 'Mon profil',
+    'nav.accountManagement': 'Gestion des comptes',
     'nav.notifications': 'Notifications',
     'nav.logout': 'Déconnexion',
     'nav.language': 'Langue',
@@ -369,6 +369,10 @@ export const translations = {
     'admin.monthMay': 'Mai',
     'admin.monthJun': 'Jun',
 
+    // === ACCOUNT MANAGEMENT ===
+    'accountManagement.title': 'Gestion des comptes',
+    'accountManagement.subtitle': 'Gérez les utilisateurs, leurs rôles et statuts',
+
     // === PROFILE ===
     'profile.title': 'Mon profil',
     'profile.subtitle': 'Gérez vos informations personnelles',
@@ -477,7 +481,7 @@ export const translations = {
     'nav.alerts': 'Alerts',
     'nav.sos': 'SOS Emergency',
     'nav.admin': 'Administration',
-    'nav.profile': 'My profile',
+    'nav.accountManagement': 'Account Management',
     'nav.notifications': 'Notifications',
     'nav.logout': 'Log out',
     'nav.language': 'Language',
@@ -722,6 +726,10 @@ export const translations = {
     'admin.monthMay': 'May',
     'admin.monthJun': 'Jun',
 
+    // === ACCOUNT MANAGEMENT ===
+    'accountManagement.title': 'Account Management',
+    'accountManagement.subtitle': 'Manage users, their roles and statuses',
+
     // === PROFILE ===
     'profile.title': 'My profile',
     'profile.subtitle': 'Manage your personal information',
@@ -830,7 +838,7 @@ export const translations = {
     'nav.alerts': 'Kpɔɖeŋu',
     'nav.sos': 'SOS Xexeame',
     'nav.admin': 'Dɔwɔƒe',
-    'nav.profile': 'Nye nɔnɔme',
+    'nav.accountManagement': 'Akaŋtɔwo ƒe dziɖuɖu',
     'nav.notifications': 'Nyatakaka',
     'nav.logout': 'Vu eŋu',
     'nav.language': 'Gbe',
@@ -945,6 +953,10 @@ export const translations = {
     'admin.monthApr': 'Apr',
     'admin.monthMay': 'May',
     'admin.monthJun': 'Jun',
+
+    // === ACCOUNT MANAGEMENT ===
+    'accountManagement.title': 'Akaŋtɔwo ƒe dziɖuɖu',
+    'accountManagement.subtitle': 'Dzi ɖu amewo, woƒe mɔ tiatia kple nɔnɔme',
 
     // === DASHBOARD - minimal Ewe ===
     'dashboard.welcome': 'Wɔwɔ na wò',
@@ -1074,6 +1086,7 @@ export const translations = {
     'nav.alerts': 'Yɛlɩ',
     'nav.sos': 'SOS Yɛlɩ',
     'nav.admin': 'Kanɩsɩbɩ lɩm',
+    'nav.accountManagement': 'Hawuli n-lɛm',
     'nav.profile': 'Nɛ pʋ',
     'nav.notifications': 'Tɔm lɩna',
     'nav.logout': 'Saŋ tɩ',
@@ -1189,6 +1202,10 @@ export const translations = {
     'admin.monthApr': 'Apr',
     'admin.monthMay': 'May',
     'admin.monthJun': 'Jun',
+
+    // === ACCOUNT MANAGEMENT ===
+    'accountManagement.title': 'Hawuli n-lɛm',
+    'accountManagement.subtitle': 'Kadɩ n-lɛm, wo mɩnzɩm nɛ wo nɛɩɩ',
 
     // === DASHBOARD - minimal Kabyè ===
     'dashboard.welcome': 'Pʋ nɛ wò',

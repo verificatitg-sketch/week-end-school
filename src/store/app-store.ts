@@ -8,6 +8,7 @@ export type ViewType =
   | 'alerts'
   | 'sos'
   | 'admin'
+  | 'account-management'
   | 'profile'
   | 'notifications'
   | 'login'

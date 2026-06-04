@@ -21,6 +21,7 @@ import { MentorshipView } from '@/components/views/mentorship-view';
 import { AlertsView } from '@/components/views/alerts-view';
 import { SOSView } from '@/components/views/sos-view';
 import { AdminView } from '@/components/views/admin-view';
+import { AccountManagementView } from '@/components/views/account-management-view';
 import { ProfileView } from '@/components/views/profile-view';
 import { NotificationsView } from '@/components/views/notifications-view';
 import {
@@ -50,6 +51,7 @@ import {
   ChevronRight,
   Phone,
   Star,
+  UserCog,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -216,6 +218,7 @@ function DrawerNav({ onNavigate }: { onNavigate?: () => void }) {
 
   const adminItems: Array<{ view: ViewType; label: string; icon: React.ReactNode }> = [
     { view: 'admin', label: t('nav.admin'), icon: <Shield className="h-5 w-5" /> },
+    { view: 'account-management', label: t('nav.accountManagement'), icon: <UserCog className="h-5 w-5" /> },
   ];
 
   const isActive = (view: ViewType) => currentView === view;
@@ -331,6 +334,8 @@ function ViewRouter() {
       return <SOSView />;
     case 'admin':
       return <AdminView />;
+    case 'account-management':
+      return <AccountManagementView />;
     case 'profile':
       return <ProfileView />;
     case 'notifications':
@@ -461,6 +466,7 @@ function DesktopSidebar() {
 
   const adminItems: Array<{ view: ViewType; label: string; icon: React.ReactNode }> = [
     { view: 'admin', label: t('nav.admin'), icon: <Shield className="h-5 w-5" /> },
+    { view: 'account-management', label: t('nav.accountManagement'), icon: <UserCog className="h-5 w-5" /> },
   ];
 
   const isActive = (view: ViewType) => currentView === view;
@@ -653,6 +659,7 @@ export default function WEDSApp() {
               {currentView === 'alerts' && t('alerts.title')}
               {currentView === 'sos' && t('nav.sos')}
               {currentView === 'admin' && t('nav.admin')}
+              {currentView === 'account-management' && t('nav.accountManagement')}
               {currentView === 'profile' && t('nav.profile')}
               {currentView === 'notifications' && t('nav.notifications')}
             </h2>
