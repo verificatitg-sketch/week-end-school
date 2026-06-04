@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, sb } from '@/lib/supabase';
+import { turso, db } from '@/lib/db';
 import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
 
 async function getAuthUser(request: Request) {
@@ -7,7 +7,7 @@ async function getAuthUser(request: Request) {
   if (!token) return null;
   const payload = await verifyToken(token);
   if (!payload) return null;
-  const user = await sb.user.findUnique({ id: payload.userId as string });
+  const user = await turso.user.findUnique({ id: payload.userId as string });
   return user;
 }
 
@@ -27,7 +27,7 @@ export async function GET(request: Request) {
     // Users can only see their own enrollments unless admin
     const targetUserId = userId || user.id;
     const isAdmin =
-      user.role?.name === 'SUPER_ADMIN' || user.role?.name === 'ADMIN';
+      user.role_name === 'SUPER_ADMIN' || user.role_name === 'ADMIN';
     if (targetUserId !== user.id && !isAdmin) {
       return NextResponse.json(
         { error: 'Access denied' },
@@ -35,39 +35,84 @@ export async function GET(request: Request) {
       );
     }
 
-    const { data: enrollments, error } = await supabaseAdmin
-      .from('enrollments')
-      .select('*, course:courses(*, modules:course_modules(count)), certificate:certificates(*)')
-      .eq('user_id', targetUserId)
-      .order('enrolled_at', { ascending: false });
+    // Get enrollments with course and module count
+    const enrollmentsRes = await db.execute({
+      sql: `SELECT e.*,
+             (SELECT COUNT(*) FROM course_modules cm WHERE cm.course_id = e.course_id) as module_count
+             FROM enrollments e
+             WHERE e.user_id = ?
+             ORDER BY e.enrolled_at DESC`,
+      args: [targetUserId],
+    });
 
-    if (error) throw error;
+    // Get certificates for all these enrollments
+    const enrollmentIds = enrollmentsRes.rows.map((r) => (r as Record<string, unknown>).id as string);
+
+    // Get courses for the enrollments
+    const courseIds = enrollmentsRes.rows.map((r) => (r as Record<string, unknown>).course_id as string);
+
+    // Batch fetch courses
+    const coursesMap: Record<string, Record<string, unknown>> = {};
+    if (courseIds.length > 0) {
+      const placeholders = courseIds.map(() => '?').join(',');
+      const coursesRes = await db.execute({
+        sql: `SELECT * FROM courses WHERE id IN (${placeholders})`,
+        args: courseIds,
+      });
+      for (const c of coursesRes.rows) {
+        const course = c as Record<string, unknown>;
+        coursesMap[course.id as string] = course;
+      }
+    }
+
+    // Batch fetch certificates
+    const certsMap: Record<string, Record<string, unknown>> = {};
+    if (enrollmentIds.length > 0) {
+      const placeholders = enrollmentIds.map(() => '?').join(',');
+      const certsRes = await db.execute({
+        sql: `SELECT * FROM certificates WHERE enrollment_id IN (${placeholders})`,
+        args: enrollmentIds,
+      });
+      for (const cert of certsRes.rows) {
+        const c = cert as Record<string, unknown>;
+        if (c.enrollment_id) {
+          certsMap[c.enrollment_id as string] = c;
+        }
+      }
+    }
 
     // Map to camelCase
-    const mapped = (enrollments || []).map((e: any) => ({
-      id: e.id,
-      userId: e.user_id,
-      courseId: e.course_id,
-      progress: e.progress,
-      completed: e.completed,
-      enrolledAt: e.enrolled_at,
-      updatedAt: e.updated_at,
-      course: e.course ? {
-        ...e.course,
-        createdAt: e.course.created_at,
-        updatedAt: e.course.updated_at,
-        _count: {
-          modules: e.course.modules?.[0]?.count || 0,
-        },
-      } : null,
-      certificate: e.certificate && e.certificate.length > 0 ? {
-        ...e.certificate[0],
-        qrCode: e.certificate[0]?.qr_code,
-        issuedAt: e.certificate[0]?.issued_at,
-        userId: e.certificate[0]?.user_id,
-        enrollmentId: e.certificate[0]?.enrollment_id,
-      } : null,
-    }));
+    const mapped = enrollmentsRes.rows.map((row) => {
+      const e = row as Record<string, unknown>;
+      const rawCourse = coursesMap[e.course_id as string];
+      const rawCert = certsMap[e.id as string];
+
+      return {
+        id: e.id,
+        userId: e.user_id,
+        courseId: e.course_id,
+        progress: e.progress,
+        completed: !!e.completed,
+        enrolledAt: e.enrolled_at,
+        updatedAt: e.updated_at,
+        course: rawCourse ? {
+          ...rawCourse,
+          createdAt: rawCourse.created_at,
+          updatedAt: rawCourse.updated_at,
+          published: !!rawCourse.published,
+          _count: {
+            modules: e.module_count as number || 0,
+          },
+        } : null,
+        certificate: rawCert ? {
+          ...rawCert,
+          qrCode: rawCert.qr_code,
+          issuedAt: rawCert.issued_at,
+          userId: rawCert.user_id,
+          enrollmentId: rawCert.enrollment_id,
+        } : null,
+      };
+    });
 
     return NextResponse.json({ enrollments: mapped });
   } catch (error) {
@@ -100,19 +145,15 @@ export async function POST(request: Request) {
     }
 
     // Check course exists and is published
-    const { data: course, error: courseError } = await supabaseAdmin
-      .from('courses')
-      .select('*')
-      .eq('id', courseId)
-      .single();
-
-    if (courseError || !course) {
+    const courseRow = await turso.course.findUnique({ id: courseId });
+    if (!courseRow) {
       return NextResponse.json(
         { error: 'Course not found' },
         { status: 404 }
       );
     }
 
+    const course = courseRow as Record<string, unknown>;
     if (!course.published) {
       return NextResponse.json(
         { error: 'Course is not available for enrollment' },
@@ -121,33 +162,36 @@ export async function POST(request: Request) {
     }
 
     // Check if already enrolled
-    const { data: existing } = await supabaseAdmin
-      .from('enrollments')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('course_id', courseId)
-      .single();
+    const existingRes = await db.execute({
+      sql: 'SELECT id FROM enrollments WHERE user_id = ? AND course_id = ?',
+      args: [user.id, courseId],
+    });
 
-    if (existing) {
+    if (existingRes.rows.length > 0) {
       return NextResponse.json(
         { error: 'Already enrolled in this course' },
         { status: 409 }
       );
     }
 
-    const { data: enrollment, error: enrollError } = await supabaseAdmin
-      .from('enrollments')
-      .insert({
-        user_id: user.id,
-        course_id: courseId,
-      })
-      .select('*, course:courses(*)')
-      .single();
+    // Create enrollment
+    const enrollmentId = await turso.insert('enrollments', {
+      user_id: user.id,
+      course_id: courseId,
+      progress: 0,
+      completed: 0,
+    });
 
-    if (enrollError) throw enrollError;
+    // Fetch the created enrollment with course
+    const enrollmentRes = await db.execute({
+      sql: 'SELECT * FROM enrollments WHERE id = ?',
+      args: [enrollmentId],
+    });
+
+    const enrollment = enrollmentRes.rows[0] as Record<string, unknown>;
 
     // Create notification
-    await supabaseAdmin.from('notifications').insert({
+    await turso.insert('notifications', {
       user_id: user.id,
       title: 'Inscription réussie',
       message: `Vous êtes inscrit au cours "${course.title}"`,
@@ -160,10 +204,10 @@ export async function POST(request: Request) {
       userId: enrollment.user_id,
       courseId: enrollment.course_id,
       progress: enrollment.progress,
-      completed: enrollment.completed,
+      completed: !!enrollment.completed,
       enrolledAt: enrollment.enrolled_at,
       updatedAt: enrollment.updated_at,
-      course: enrollment.course,
+      course: course,
     };
 
     return NextResponse.json({ enrollment: mapped }, { status: 201 });

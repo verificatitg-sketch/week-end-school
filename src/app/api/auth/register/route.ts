@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { sb, mapUserToApi, mapUserToDb } from '@/lib/supabase';
+import { turso, mapUserToApi, mapUserToDb } from '@/lib/db';
 import { hashPassword, createToken } from '@/lib/auth';
 
 export async function POST(request: Request) {
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     }
 
     // Check if user already exists
-    const existingUser = await sb.user.findUnique({ email });
+    const existingUser = await turso.user.findUnique({ email });
     if (existingUser) {
       return NextResponse.json(
         { error: 'Email already registered' },
@@ -24,9 +24,9 @@ export async function POST(request: Request) {
     }
 
     // Find default role
-    let role = await sb.role.findUnique({ name: 'UTILISATEUR' });
+    let role = await turso.role.findUnique({ name: 'UTILISATEUR' });
     if (!role) {
-      role = await sb.role.create({
+      role = await turso.role.create({
         name: 'UTILISATEUR',
         description: 'Default user role',
       });
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
 
     const hashedPassword = await hashPassword(password);
 
-    const user = await sb.user.create(
+    const user = await turso.user.create(
       mapUserToDb({
         email,
         name,
@@ -48,9 +48,9 @@ export async function POST(request: Request) {
     );
 
     const token = await createToken({
-      userId: user.id,
-      email: user.email,
-      role: user.role?.name,
+      userId: user!.id,
+      email: user!.email,
+      role: user!.role_name,
     });
 
     const { password: _, ...mappedUser } = mapUserToApi(user)!;

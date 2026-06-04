@@ -1,40 +1,38 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
+import { turso } from '@/lib/db';
 
 // GET /api/sos/admins - Public endpoint to get available admin users for SOS
 // This is intentionally public so unauthenticated users (on login page) can see admin info
 export async function GET() {
   try {
     // Find admin/emergency roles
-    const { data: adminRoles, error: rolesError } = await supabaseAdmin
-      .from('roles')
-      .select('id, name')
-      .in('name', ['SUPER_ADMIN', 'ADMIN', 'INTERVENANT_URGENCE']);
+    const rolesResult = await turso.query(
+      `SELECT id, name FROM roles WHERE name IN ('SUPER_ADMIN', 'ADMIN', 'INTERVENANT_URGENCE')`
+    );
 
-    if (rolesError) throw rolesError;
-
-    if (!adminRoles || adminRoles.length === 0) {
+    if (!rolesResult.rows.length) {
       return NextResponse.json({ admins: [] });
     }
 
-    const roleIds = adminRoles.map((r: any) => r.id);
+    const roleIds = rolesResult.rows.map((r: any) => r.id);
+    const placeholders = roleIds.map(() => '?').join(',');
 
-    const { data: admins, error } = await supabaseAdmin
-      .from('users')
-      .select('id, name, phone, email, location, role:roles(name)')
-      .in('role_id', roleIds)
-      .eq('is_active', true);
-
-    if (error) throw error;
+    const adminsResult = await turso.query(
+      `SELECT u.id, u.name, u.phone, u.email, u.location, r.name as role_name
+       FROM users u
+       LEFT JOIN roles r ON u.role_id = r.id
+       WHERE u.role_id IN (${placeholders}) AND u.is_active = 1`,
+      roleIds
+    );
 
     return NextResponse.json({
-      admins: (admins || []).map((a: any) => ({
+      admins: adminsResult.rows.map((a: any) => ({
         id: a.id,
         name: a.name,
         phone: a.phone || '',
         email: a.email,
         location: a.location || '',
-        role: a.role?.name || 'ADMIN',
+        role: a.role_name || 'ADMIN',
       })),
     });
   } catch (error) {

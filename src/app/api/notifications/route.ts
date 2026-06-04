@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, sb } from '@/lib/supabase';
+import { turso } from '@/lib/db';
 import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
 
 async function getAuthUser(request: Request) {
@@ -7,7 +7,8 @@ async function getAuthUser(request: Request) {
   if (!token) return null;
   const payload = await verifyToken(token);
   if (!payload) return null;
-  const user = await sb.user.findUnique({ id: payload.userId as string });
+  const { db } = await import('@/lib/db');
+  const user = await db.user.findUnique({ id: payload.userId as string });
   return user;
 }
 
@@ -21,13 +22,12 @@ export async function GET(request: Request) {
       );
     }
 
-    const { data: notifications, error } = await supabaseAdmin
-      .from('notifications')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
+    const result = await turso.query(
+      `SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC`,
+      [user.id]
+    );
 
-    if (error) throw error;
+    const notifications = result.rows;
 
     const mapped = (notifications || []).map((n: any) => ({
       id: n.id,
@@ -35,7 +35,7 @@ export async function GET(request: Request) {
       title: n.title,
       message: n.message,
       type: n.type,
-      read: n.read,
+      read: !!n.read,
       link: n.link,
       createdAt: n.created_at,
     }));
@@ -66,11 +66,10 @@ export async function PUT(request: Request) {
     const { notificationId, markAll } = body;
 
     if (markAll) {
-      await supabaseAdmin
-        .from('notifications')
-        .update({ read: true })
-        .eq('user_id', user.id)
-        .eq('read', false);
+      await turso.query(
+        `UPDATE notifications SET read = 1 WHERE user_id = ? AND read = 0`,
+        [user.id]
+      );
 
       return NextResponse.json({ message: 'All notifications marked as read' });
     }
@@ -82,23 +81,19 @@ export async function PUT(request: Request) {
       );
     }
 
-    const { data: notification } = await supabaseAdmin
-      .from('notifications')
-      .select('*')
-      .eq('id', notificationId)
-      .single();
+    const notification = await turso.findById('notifications', notificationId);
 
-    if (!notification || notification.user_id !== user.id) {
+    if (!notification || (notification as any).user_id !== user.id) {
       return NextResponse.json(
         { error: 'Notification not found' },
         { status: 404 }
       );
     }
 
-    await supabaseAdmin
-      .from('notifications')
-      .update({ read: true })
-      .eq('id', notificationId);
+    await turso.query(
+      `UPDATE notifications SET read = 1 WHERE id = ?`,
+      [notificationId]
+    );
 
     return NextResponse.json({ message: 'Notification marked as read' });
   } catch (error) {

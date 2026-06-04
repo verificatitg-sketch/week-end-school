@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, mapUserToApi } from '@/lib/supabase';
+import { turso, mapUserToApi } from '@/lib/db';
 import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
 
 export async function GET(request: Request) {
@@ -22,32 +22,30 @@ export async function GET(request: Request) {
 
     const id = payload.userId as string;
 
-    // Fetch user with role
-    const { data: dbUser, error: userError } = await supabaseAdmin
-      .from('users')
-      .select('*, role:roles(*)')
-      .eq('id', id)
-      .single();
+    // Fetch user with role (turso.user.findUnique already JOINs roles)
+    const dbUser = await turso.user.findUnique({ id });
 
-    if (userError || !dbUser) {
+    if (!dbUser) {
       return NextResponse.json(
         { error: 'User not found' },
         { status: 404 }
       );
     }
 
-    // Fetch badges separately (Supabase doesn't support deep nested includes like Prisma)
-    const { data: dbBadges } = await supabaseAdmin
-      .from('user_badges')
-      .select('*, badge:badges(*)')
-      .eq('user_id', id);
+    // Fetch badges separately using raw query
+    const badgesResult = await turso.query(
+      `SELECT ub.*, b.id as badge_id_col, b.name, b.description, b.icon, b.category, b.created_at as badge_created_at
+       FROM user_badges ub
+       LEFT JOIN badges b ON ub.badge_id = b.id
+       WHERE ub.user_id = ?`,
+      [id]
+    );
 
-    // Fetch mentor profile separately
-    const { data: dbMentorProfile } = await supabaseAdmin
-      .from('mentors')
-      .select('*')
-      .eq('user_id', id)
-      .single();
+    // Fetch mentor profile separately using raw query
+    const mentorResult = await turso.query(
+      'SELECT * FROM mentors WHERE user_id = ?',
+      [id]
+    );
 
     // Map user to API format (camelCase)
     const mappedUser = mapUserToApi(dbUser);
@@ -58,29 +56,34 @@ export async function GET(request: Request) {
       );
     }
 
-    // Add badges with camelCase mapping
-    const badges = (dbBadges || []).map((ub: Record<string, unknown>) => ({
-      id: ub.id,
-      userId: ub.user_id,
-      badgeId: ub.badge_id,
-      earnedAt: ub.earned_at ?? ub.created_at,
-      badge: ub.badge,
+    // Map badges with camelCase conversion
+    const badges = badgesResult.rows.map((row: Record<string, unknown>) => ({
+      id: row.id,
+      userId: row.user_id,
+      badgeId: row.badge_id,
+      earnedAt: row.earned_at ?? row.created_at,
+      badge: row.badge_id_col ? {
+        id: row.badge_id_col,
+        name: row.name,
+        description: row.description,
+        icon: row.icon,
+        category: row.category,
+        createdAt: row.badge_created_at,
+      } : null,
     }));
 
-    // Add mentor profile with camelCase mapping
-    const mentorProfile = dbMentorProfile
-      ? (() => {
-          const mp = dbMentorProfile as Record<string, unknown>;
-          return {
-            id: mp.id,
-            userId: mp.user_id,
-            bio: mp.bio,
-            expertise: mp.expertise,
-            isAvailable: mp.is_available,
-            createdAt: mp.created_at,
-            updatedAt: mp.updated_at,
-          };
-        })()
+    // Map mentor profile with camelCase conversion
+    const mentorRow = mentorResult.rows[0] as Record<string, unknown> | undefined;
+    const mentorProfile = mentorRow
+      ? {
+          id: mentorRow.id,
+          userId: mentorRow.user_id,
+          bio: mentorRow.bio,
+          expertise: mentorRow.expertise,
+          isAvailable: !!mentorRow.is_available,
+          createdAt: mentorRow.created_at,
+          updatedAt: mentorRow.updated_at,
+        }
       : null;
 
     const { password: _, ...userWithoutPassword } = {

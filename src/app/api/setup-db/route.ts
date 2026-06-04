@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
+import { turso, db } from '@/lib/db';
 
 /**
  * GET /api/setup-db
- * Check the current status of the Supabase database setup.
+ * Check the current status of the Turso database setup.
  */
 export async function GET() {
   try {
@@ -24,21 +24,24 @@ export async function GET() {
     const missing: string[] = [];
 
     for (const table of allTables) {
-      const { error } = await supabaseAdmin.from(table).select('id').limit(1);
-      if (error) {
-        missing.push(table);
-      } else {
+      try {
+        await turso.query(`SELECT id FROM ${table} LIMIT 1`);
         existing.push(table);
+      } catch {
+        missing.push(table);
       }
     }
 
     // Check if admin user exists
     let adminExists = false;
     if (existing.includes('users') && existing.includes('roles')) {
-      const { data: adminRole } = await supabaseAdmin.from('roles').select('id').eq('name', 'SUPER_ADMIN').single();
+      const adminRole = await db.role.findUnique({ name: 'SUPER_ADMIN' });
       if (adminRole) {
-        const { data: adminUsers } = await supabaseAdmin.from('users').select('id').eq('role_id', adminRole.id).limit(1);
-        if (adminUsers && adminUsers.length > 0) {
+        const adminUsers = await turso.query(
+          'SELECT id FROM users WHERE role_id = ? LIMIT 1',
+          [adminRole.id]
+        );
+        if (adminUsers.rows.length > 0) {
           adminExists = true;
         }
       }
@@ -53,12 +56,9 @@ export async function GET() {
       missingTables: missing,
       adminExists,
       criticalReady: criticalTables.every(t => existing.includes(t)),
-      sqlEditorUrl: 'https://supabase.com/dashboard/project/omiexeswwdqffivxlhel/sql',
       instructions: missing.length > 0 ? [
-        '1. Go to the Supabase Dashboard SQL Editor',
-        '2. Copy the contents of supabase-schema.sql from the project root',
-        '3. Paste and run the SQL',
-        '4. Then call POST /api/seed to create the admin user and sample data',
+        '1. Run the Turso schema SQL to create the missing tables',
+        '2. Then call POST /api/seed to create the admin user and sample data',
       ] : (!adminExists ? [
         'Tables are created! Now seed the database:',
         'Call POST /api/seed to create the admin user and sample data',

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, sb } from '@/lib/supabase';
+import { turso } from '@/lib/db';
 import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
 
 async function getAuthUser(request: Request) {
@@ -7,7 +7,7 @@ async function getAuthUser(request: Request) {
   if (!token) return null;
   const payload = await verifyToken(token);
   if (!payload) return null;
-  const user = await sb.user.findUnique({ id: payload.userId as string });
+  const user = await turso.user.findUnique({ id: payload.userId as string });
   return user;
 }
 
@@ -19,34 +19,34 @@ export async function GET(
     const { id } = await params;
 
     // Check post exists
-    const { data: post } = await supabaseAdmin
-      .from('community_posts')
-      .select('id')
-      .eq('id', id)
-      .single();
+    const postCheck = await turso.query(
+      'SELECT id FROM community_posts WHERE id = ?',
+      [id]
+    );
 
-    if (!post) {
+    if (!postCheck.rows.length) {
       return NextResponse.json(
         { error: 'Post not found' },
         { status: 404 }
       );
     }
 
-    const { data: comments, error } = await supabaseAdmin
-      .from('comments')
-      .select('*, user:users(id, name, avatar)')
-      .eq('post_id', id)
-      .order('created_at', { ascending: true });
+    const result = await turso.query(
+      `SELECT c.*, u.id as user_id, u.name as user_name, u.avatar as user_avatar
+       FROM comments c
+       LEFT JOIN users u ON c.user_id = u.id
+       WHERE c.post_id = ?
+       ORDER BY c.created_at ASC`,
+      [id]
+    );
 
-    if (error) throw error;
-
-    const mapped = (comments || []).map((c: any) => ({
+    const mapped = result.rows.map((c: any) => ({
       id: c.id,
       content: c.content,
       postId: c.post_id,
       userId: c.user_id,
       createdAt: c.created_at,
-      user: c.user,
+      user: c.user_id ? { id: c.user_id, name: c.user_name, avatar: c.user_avatar } : null,
     }));
 
     return NextResponse.json({ comments: mapped });
@@ -83,36 +83,50 @@ export async function POST(
       );
     }
 
-    // Check post exists
-    const { data: post } = await supabaseAdmin
-      .from('community_posts')
-      .select('user_id')
-      .eq('id', id)
-      .single();
+    // Check post exists and get author
+    const postCheck = await turso.query(
+      'SELECT user_id FROM community_posts WHERE id = ?',
+      [id]
+    );
 
-    if (!post) {
+    if (!postCheck.rows.length) {
       return NextResponse.json(
         { error: 'Post not found' },
         { status: 404 }
       );
     }
 
-    const { data: comment, error } = await supabaseAdmin
-      .from('comments')
-      .insert({
-        content,
-        post_id: id,
-        user_id: user.id,
-      })
-      .select('*, user:users(id, name, avatar)')
-      .single();
+    const postUserId = (postCheck.rows[0] as any).user_id;
 
-    if (error) throw error;
+    const commentId = await turso.insert('comments', {
+      content,
+      post_id: id,
+      user_id: user.id,
+    });
+
+    // Fetch the created comment with user info
+    const result = await turso.query(
+      `SELECT c.*, u.id as user_id, u.name as user_name, u.avatar as user_avatar
+       FROM comments c
+       LEFT JOIN users u ON c.user_id = u.id
+       WHERE c.id = ?`,
+      [commentId]
+    );
+
+    const c = result.rows[0] as any;
+    const comment = {
+      id: c.id,
+      content: c.content,
+      postId: c.post_id,
+      userId: c.user_id,
+      createdAt: c.created_at,
+      user: c.user_id ? { id: c.user_id, name: c.user_name, avatar: c.user_avatar } : null,
+    };
 
     // Notify the post author
-    if (post.user_id !== user.id) {
-      await supabaseAdmin.from('notifications').insert({
-        user_id: post.user_id,
+    if (postUserId && postUserId !== user.id) {
+      await turso.insert('notifications', {
+        user_id: postUserId,
         title: 'Nouveau commentaire',
         message: `${user.name} a commenté votre publication`,
         type: 'community',

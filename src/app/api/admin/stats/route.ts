@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, sb } from '@/lib/supabase';
+import { turso, db } from '@/lib/db';
 import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
 
 /**
@@ -43,7 +43,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const user = await sb.user.findUnique({ id: payload.userId as string });
+    const user = await turso.user.findUnique({ id: payload.userId as string });
 
     if (!user) {
       return NextResponse.json(
@@ -53,7 +53,7 @@ export async function GET(request: Request) {
     }
 
     const isAdmin =
-      user.role?.name === 'SUPER_ADMIN' || user.role?.name === 'ADMIN';
+      user.role_name === 'SUPER_ADMIN' || user.role_name === 'ADMIN';
     if (!isAdmin) {
       return NextResponse.json(
         { error: 'Admin access required' },
@@ -63,25 +63,25 @@ export async function GET(request: Request) {
 
     // Get counts in parallel
     const [
-      usersCount,
-      coursesCount,
-      enrollmentsCount,
-      opportunitiesCount,
-      sosAlertsCount,
-      reportsCount,
-      certificatesCount,
-      mentorsCount,
-      communityPostsCount,
+      usersCountRes,
+      coursesCountRes,
+      enrollmentsCountRes,
+      opportunitiesCountRes,
+      sosAlertsCountRes,
+      reportsCountRes,
+      certificatesCountRes,
+      mentorsCountRes,
+      communityPostsCountRes,
     ] = await Promise.all([
-      supabaseAdmin.from('users').select('*', { count: 'exact', head: true }),
-      supabaseAdmin.from('courses').select('*', { count: 'exact', head: true }),
-      supabaseAdmin.from('enrollments').select('*', { count: 'exact', head: true }),
-      supabaseAdmin.from('opportunities').select('*', { count: 'exact', head: true }),
-      supabaseAdmin.from('sos_alerts').select('*', { count: 'exact', head: true }),
-      supabaseAdmin.from('reports').select('*', { count: 'exact', head: true }),
-      supabaseAdmin.from('certificates').select('*', { count: 'exact', head: true }),
-      supabaseAdmin.from('mentors').select('*', { count: 'exact', head: true }),
-      supabaseAdmin.from('community_posts').select('*', { count: 'exact', head: true }),
+      db.execute({ sql: 'SELECT COUNT(*) as count FROM users', args: [] }),
+      db.execute({ sql: 'SELECT COUNT(*) as count FROM courses', args: [] }),
+      db.execute({ sql: 'SELECT COUNT(*) as count FROM enrollments', args: [] }),
+      db.execute({ sql: 'SELECT COUNT(*) as count FROM opportunities', args: [] }),
+      db.execute({ sql: 'SELECT COUNT(*) as count FROM sos_alerts', args: [] }),
+      db.execute({ sql: 'SELECT COUNT(*) as count FROM reports', args: [] }),
+      db.execute({ sql: 'SELECT COUNT(*) as count FROM certificates', args: [] }),
+      db.execute({ sql: 'SELECT COUNT(*) as count FROM mentors', args: [] }),
+      db.execute({ sql: 'SELECT COUNT(*) as count FROM community_posts', args: [] }),
     ]);
 
     // Get recent activity in parallel
@@ -90,61 +90,100 @@ export async function GET(request: Request) {
       recentEnrollmentsResult,
       recentSosAlertsResult,
     ] = await Promise.all([
-      supabaseAdmin
-        .from('users')
-        .select('id, name, email, created_at')
-        .order('created_at', { ascending: false })
-        .limit(5),
-      supabaseAdmin
-        .from('enrollments')
-        .select('*, user:users(name), course:courses(title)')
-        .order('enrolled_at', { ascending: false })
-        .limit(5),
-      supabaseAdmin
-        .from('sos_alerts')
-        .select('*, user:users(name)')
-        .order('created_at', { ascending: false })
-        .limit(5),
+      db.execute({
+        sql: 'SELECT id, name, email, created_at FROM users ORDER BY created_at DESC LIMIT 5',
+        args: [],
+      }),
+      db.execute({
+        sql: `SELECT e.*, u.name as user_name, c.title as course_title
+               FROM enrollments e
+               LEFT JOIN users u ON e.user_id = u.id
+               LEFT JOIN courses c ON e.course_id = c.id
+               ORDER BY e.enrolled_at DESC LIMIT 5`,
+        args: [],
+      }),
+      db.execute({
+        sql: `SELECT s.*, u.name as user_name
+               FROM sos_alerts s
+               LEFT JOIN users u ON s.user_id = u.id
+               ORDER BY s.created_at DESC LIMIT 5`,
+        args: [],
+      }),
     ]);
 
+    // Map enrollment rows to include nested user/course objects matching the old format
+    const recentEnrollments = recentEnrollmentsResult.rows.map((row) => {
+      const obj = row as Record<string, unknown>;
+      return {
+        id: obj.id,
+        user_id: obj.user_id,
+        course_id: obj.course_id,
+        progress: obj.progress,
+        completed: obj.completed,
+        enrolled_at: obj.enrolled_at,
+        updated_at: obj.updated_at,
+        user: obj.user_name ? { name: obj.user_name } : null,
+        course: obj.course_title ? { title: obj.course_title } : null,
+      };
+    });
+
+    // Map SOS alert rows to include nested user object matching the old format
+    const recentSosAlerts = recentSosAlertsResult.rows.map((row) => {
+      const obj = row as Record<string, unknown>;
+      return {
+        id: obj.id,
+        user_id: obj.user_id,
+        status: obj.status,
+        created_at: obj.created_at,
+        updated_at: obj.updated_at,
+        user: obj.user_name ? { name: obj.user_name } : null,
+      };
+    });
+
     // Get user role distribution
-    const { data: allRolesRaw } = await supabaseAdmin
-      .from('users')
-      .select('role:roles(name)');
+    const roleDistResult = await db.execute({
+      sql: `SELECT r.name as role_name, COUNT(*) as count
+             FROM users u
+             LEFT JOIN roles r ON u.role_id = r.id
+             GROUP BY r.name`,
+      args: [],
+    });
 
     const roleDistribution: Record<string, number> = {};
-    for (const u of (allRolesRaw || [])) {
-      const roleName = (u.role as { name: string } | null)?.name || 'NO_ROLE';
-      roleDistribution[roleName] = (roleDistribution[roleName] || 0) + 1;
+    for (const row of roleDistResult.rows) {
+      const r = row as Record<string, unknown>;
+      const roleName = (r.role_name as string) || 'NO_ROLE';
+      roleDistribution[roleName] = (r.count as number) || 0;
     }
 
     // Get SOS alert status distribution
-    const { data: allSosAlertsRaw } = await supabaseAdmin
-      .from('sos_alerts')
-      .select('status');
+    const sosStatusResult = await db.execute({
+      sql: 'SELECT status, COUNT(*) as count FROM sos_alerts GROUP BY status',
+      args: [],
+    });
 
     const sosStatusDistribution: Record<string, number> = {};
-    for (const a of (allSosAlertsRaw || [])) {
-      sosStatusDistribution[a.status] =
-        (sosStatusDistribution[a.status] || 0) + 1;
+    for (const row of sosStatusResult.rows) {
+      const r = row as Record<string, unknown>;
+      sosStatusDistribution[r.status as string] = (r.count as number) || 0;
     }
 
     return NextResponse.json({
       stats: {
-        users: usersCount.count || 0,
-        courses: coursesCount.count || 0,
-        enrollments: enrollmentsCount.count || 0,
-        opportunities: opportunitiesCount.count || 0,
-        sosAlerts: sosAlertsCount.count || 0,
-        reports: reportsCount.count || 0,
-        certificates: certificatesCount.count || 0,
-        mentors: mentorsCount.count || 0,
-        communityPosts: communityPostsCount.count || 0,
+        users: (usersCountRes.rows[0] as Record<string, unknown>)?.count || 0,
+        courses: (coursesCountRes.rows[0] as Record<string, unknown>)?.count || 0,
+        enrollments: (enrollmentsCountRes.rows[0] as Record<string, unknown>)?.count || 0,
+        opportunities: (opportunitiesCountRes.rows[0] as Record<string, unknown>)?.count || 0,
+        sosAlerts: (sosAlertsCountRes.rows[0] as Record<string, unknown>)?.count || 0,
+        reports: (reportsCountRes.rows[0] as Record<string, unknown>)?.count || 0,
+        certificates: (certificatesCountRes.rows[0] as Record<string, unknown>)?.count || 0,
+        mentors: (mentorsCountRes.rows[0] as Record<string, unknown>)?.count || 0,
+        communityPosts: (communityPostsCountRes.rows[0] as Record<string, unknown>)?.count || 0,
       },
       recentActivity: {
-        users: (recentUsersResult.data || []).map((u: unknown) => mapToCamelCase(u)),
-        enrollments: (recentEnrollmentsResult.data || []).map((e: unknown) => mapToCamelCase(e)),
-        sosAlerts: (recentSosAlertsResult.data || []).map((a: unknown) => mapToCamelCase(a)),
+        users: recentUsersResult.rows.map((u) => mapToCamelCase(u)),
+        enrollments: recentEnrollments.map((e) => mapToCamelCase(e)),
+        sosAlerts: recentSosAlerts.map((a) => mapToCamelCase(a)),
       },
       distributions: {
         roles: roleDistribution,

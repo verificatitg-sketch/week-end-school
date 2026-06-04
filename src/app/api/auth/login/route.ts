@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { sb, mapUserToApi } from '@/lib/supabase';
+import { turso, mapUserToApi } from '@/lib/db';
 import { verifyPassword, createToken } from '@/lib/auth';
 
 export async function POST(request: Request) {
@@ -14,7 +14,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const user = await sb.user.findUnique({ email });
+    const user = await turso.user.findUnique({ email });
 
     if (!user) {
       return NextResponse.json(
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     const token = await createToken({
       userId: user.id,
       email: user.email,
-      role: user.role?.name,
+      role: user.role_name,
     });
 
     const { password: _, ...mappedUser } = mapUserToApi(user)!;

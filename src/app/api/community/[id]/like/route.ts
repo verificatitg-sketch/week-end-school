@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, sb } from '@/lib/supabase';
+import { turso } from '@/lib/db';
 import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
 
 async function getAuthUser(request: Request) {
@@ -7,7 +7,7 @@ async function getAuthUser(request: Request) {
   if (!token) return null;
   const payload = await verifyToken(token);
   if (!payload) return null;
-  const user = await sb.user.findUnique({ id: payload.userId as string });
+  const user = await turso.user.findUnique({ id: payload.userId as string });
   return user;
 }
 
@@ -25,46 +25,43 @@ export async function POST(
       );
     }
 
-    // Check post exists
-    const { data: post } = await supabaseAdmin
-      .from('community_posts')
-      .select('user_id')
-      .eq('id', id)
-      .single();
+    // Check post exists and get author
+    const postCheck = await turso.query(
+      'SELECT user_id FROM community_posts WHERE id = ?',
+      [id]
+    );
 
-    if (!post) {
+    if (!postCheck.rows.length) {
       return NextResponse.json(
         { error: 'Post not found' },
         { status: 404 }
       );
     }
 
-    // Check if already liked
-    const { data: existingLike } = await supabaseAdmin
-      .from('likes')
-      .select('id')
-      .eq('post_id', id)
-      .eq('user_id', user.id)
-      .single();
+    const postUserId = (postCheck.rows[0] as any).user_id;
 
-    if (existingLike) {
+    // Check if already liked
+    const existingResult = await turso.query(
+      'SELECT id FROM likes WHERE post_id = ? AND user_id = ?',
+      [id, user.id]
+    );
+
+    if (existingResult.rows.length > 0) {
       // Unlike
-      await supabaseAdmin
-        .from('likes')
-        .delete()
-        .eq('id', existingLike.id);
+      const likeId = (existingResult.rows[0] as any).id;
+      await turso.query('DELETE FROM likes WHERE id = ?', [likeId]);
       return NextResponse.json({ liked: false });
     } else {
       // Like
-      await supabaseAdmin.from('likes').insert({
+      await turso.insert('likes', {
         post_id: id,
         user_id: user.id,
       });
 
       // Notify post author
-      if (post.user_id !== user.id) {
-        await supabaseAdmin.from('notifications').insert({
-          user_id: post.user_id,
+      if (postUserId && postUserId !== user.id) {
+        await turso.insert('notifications', {
+          user_id: postUserId,
           title: 'Nouveau like',
           message: `${user.name} a aimé votre publication`,
           type: 'community',

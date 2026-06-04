@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, sb } from '@/lib/supabase';
+import { turso, db, mapUserToDb } from '@/lib/db';
 import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
 
 async function getAuthUser(request: Request) {
@@ -7,7 +7,7 @@ async function getAuthUser(request: Request) {
   if (!token) return null;
   const payload = await verifyToken(token);
   if (!payload) return null;
-  const user = await sb.user.findUnique({ id: payload.userId as string });
+  const user = await db.user.findUnique({ id: payload.userId as string });
   return user;
 }
 
@@ -22,21 +22,42 @@ export async function GET(request: Request) {
     }
 
     const isAdmin =
-      user.role?.name === 'SUPER_ADMIN' ||
-      user.role?.name === 'ADMIN' ||
-      user.role?.name === 'MODERATEUR';
+      user.role_name === 'SUPER_ADMIN' ||
+      user.role_name === 'ADMIN' ||
+      user.role_name === 'MODERATEUR';
 
-    let query = supabaseAdmin
-      .from('reports')
-      .select('*, user:users(id, name, email, avatar), attachments:report_attachments(*)')
-      .order('created_at', { ascending: false });
+    let sql = `SELECT r.*, u.id as user_id, u.name as user_name, u.email as user_email, u.avatar as user_avatar
+      FROM reports r
+      LEFT JOIN users u ON r.user_id = u.id`;
+    const args: unknown[] = [];
 
     if (!isAdmin) {
-      query = query.eq('user_id', user.id);
+      sql += ' WHERE r.user_id = ?';
+      args.push(user.id);
     }
 
-    const { data: reports, error } = await query;
-    if (error) throw error;
+    sql += ' ORDER BY r.created_at DESC';
+
+    const result = await turso.query(sql, args);
+    const reports = result.rows;
+
+    // Fetch attachments for all reports
+    const reportIds = (reports || []).map((r: any) => r.id);
+    let attachmentsMap: Record<string, any[]> = {};
+
+    if (reportIds.length > 0) {
+      const placeholders = reportIds.map(() => '?').join(',');
+      const attachResult = await turso.query(
+        `SELECT * FROM report_attachments WHERE report_id IN (${placeholders})`,
+        reportIds
+      );
+      for (const att of attachResult.rows as any[]) {
+        if (!attachmentsMap[att.report_id]) {
+          attachmentsMap[att.report_id] = [];
+        }
+        attachmentsMap[att.report_id].push(att);
+      }
+    }
 
     const mapped = (reports || []).map((r: any) => ({
       id: r.id,
@@ -45,14 +66,19 @@ export async function GET(request: Request) {
       location: r.location,
       latitude: r.latitude,
       longitude: r.longitude,
-      anonymous: r.anonymous,
+      anonymous: !!r.anonymous,
       status: r.status,
       severity: r.severity,
       userId: r.user_id,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
-      user: r.user,
-      attachments: r.attachments || [],
+      user: r.user_id ? {
+        id: r.user_id,
+        name: r.user_name,
+        email: r.user_email,
+        avatar: r.user_avatar,
+      } : null,
+      attachments: attachmentsMap[r.id] || [],
     }));
 
     return NextResponse.json({ reports: mapped });
@@ -88,45 +114,40 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: report, error } = await supabaseAdmin
-      .from('reports')
-      .insert({
-        category,
-        description,
-        location: location || null,
-        latitude: latitude || null,
-        longitude: longitude || null,
-        anonymous: anonymous ?? false,
-        severity: severity || 'medium',
-        user_id: user.id,
-      })
-      .select()
-      .single();
+    const insertData = mapUserToDb({
+      category,
+      description,
+      location: location || null,
+      latitude: latitude || null,
+      longitude: longitude || null,
+      anonymous: anonymous ?? false,
+      severity: severity || 'medium',
+      userId: user.id,
+    });
 
-    if (error) throw error;
+    const id = await turso.insert('reports', insertData);
+    const report = await turso.findById('reports', id);
 
     // Notify admins
-    const { data: adminRoles } = await supabaseAdmin
-      .from('roles')
-      .select('id')
-      .in('name', ['SUPER_ADMIN', 'ADMIN', 'MODERATEUR']);
+    const adminRoles = await turso.query(
+      `SELECT id FROM roles WHERE name IN ('SUPER_ADMIN', 'ADMIN', 'MODERATEUR')`
+    );
+    const roleIds = (adminRoles.rows as any[]).map((r: any) => r.id);
 
-    if (adminRoles && adminRoles.length > 0) {
-      const roleIds = adminRoles.map((r: any) => r.id);
-      const { data: adminUsers } = await supabaseAdmin
-        .from('users')
-        .select('id')
-        .in('role_id', roleIds);
+    if (roleIds.length > 0) {
+      const placeholders = roleIds.map(() => '?').join(',');
+      const adminUsers = await turso.query(
+        `SELECT id FROM users WHERE role_id IN (${placeholders})`,
+        roleIds
+      );
 
-      if (adminUsers) {
-        const notifications = adminUsers.map((admin: any) => ({
+      for (const admin of adminUsers.rows as any[]) {
+        await turso.insert('notifications', {
           user_id: admin.id,
           title: 'Nouveau signalement',
           message: `Un signalement de catégorie "${category}" a été créé`,
           type: 'report',
-        }));
-
-        await supabaseAdmin.from('notifications').insert(notifications);
+        });
       }
     }
 

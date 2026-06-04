@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, sb } from '@/lib/supabase';
+import { turso, db, mapUserToDb } from '@/lib/db';
 import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
 
 async function getAuthUser(request: Request) {
@@ -7,7 +7,7 @@ async function getAuthUser(request: Request) {
   if (!token) return null;
   const payload = await verifyToken(token);
   if (!payload) return null;
-  const user = await sb.user.findUnique({ id: payload.userId as string });
+  const user = await db.user.findUnique({ id: payload.userId as string });
   return user;
 }
 
@@ -16,18 +16,20 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type');
 
-    let query = supabaseAdmin
-      .from('opportunities')
-      .select('*, applications(count)')
-      .eq('published', true)
-      .order('created_at', { ascending: false });
+    let sql = `SELECT o.*, 
+      (SELECT COUNT(*) FROM applications a WHERE a.opportunity_id = o.id) as application_count
+      FROM opportunities o WHERE o.published = 1`;
+    const args: unknown[] = [];
 
     if (type) {
-      query = query.eq('type', type);
+      sql += ' AND o.type = ?';
+      args.push(type);
     }
 
-    const { data: opportunities, error } = await query;
-    if (error) throw error;
+    sql += ' ORDER BY o.created_at DESC';
+
+    const result = await turso.query(sql, args);
+    const opportunities = result.rows;
 
     const mapped = (opportunities || []).map((o: any) => ({
       id: o.id,
@@ -44,11 +46,11 @@ export async function GET(request: Request) {
       contactEmail: o.contact_email,
       contactPhone: o.contact_phone,
       url: o.url,
-      published: o.published,
+      published: !!o.published,
       createdAt: o.created_at,
       updatedAt: o.updated_at,
       _count: {
-        applications: o.applications?.[0]?.count || 0,
+        applications: Number(o.application_count) || 0,
       },
     }));
 
@@ -73,7 +75,7 @@ export async function POST(request: Request) {
     }
 
     const isAdmin =
-      user.role?.name === 'SUPER_ADMIN' || user.role?.name === 'ADMIN';
+      user.role_name === 'SUPER_ADMIN' || user.role_name === 'ADMIN';
     if (!isAdmin) {
       return NextResponse.json(
         { error: 'Admin access required' },
@@ -95,27 +97,25 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: opportunity, error } = await supabaseAdmin
-      .from('opportunities')
-      .insert({
-        title,
-        description,
-        type,
-        organization: organization || null,
-        location: location || null,
-        latitude: latitude || null,
-        longitude: longitude || null,
-        deadline: deadline || null,
-        salary: salary || null,
-        requirements: requirements || null,
-        contact_email: contactEmail || null,
-        contact_phone: contactPhone || null,
-        url: url || null,
-      })
-      .select()
-      .single();
+    const insertData = mapUserToDb({
+      title,
+      description,
+      type,
+      organization: organization || null,
+      location: location || null,
+      latitude: latitude || null,
+      longitude: longitude || null,
+      deadline: deadline || null,
+      salary: salary || null,
+      requirements: requirements || null,
+      contactEmail: contactEmail || null,
+      contactPhone: contactPhone || null,
+      url: url || null,
+      published: true,
+    });
 
-    if (error) throw error;
+    const id = await turso.insert('opportunities', insertData);
+    const opportunity = await turso.findById('opportunities', id);
 
     return NextResponse.json({ opportunity }, { status: 201 });
   } catch (error) {

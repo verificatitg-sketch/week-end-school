@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, sb } from '@/lib/supabase';
+import { turso, mapUserToApi } from '@/lib/db';
 import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
 
 async function getAuthUser(request: Request) {
@@ -7,7 +7,7 @@ async function getAuthUser(request: Request) {
   if (!token) return null;
   const payload = await verifyToken(token);
   if (!payload) return null;
-  const user = await sb.user.findUnique({ id: payload.userId as string });
+  const user = await turso.user.findUnique({ id: payload.userId as string });
   return user;
 }
 
@@ -16,32 +16,37 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
 
-    let query = supabaseAdmin
-      .from('community_posts')
-      .select('*, user:users(id, name, avatar), comments(count), likes(count)')
-      .order('pinned', { ascending: false })
-      .order('created_at', { ascending: false });
+    let sql = `
+      SELECT cp.*, u.id as user_id, u.name as user_name, u.avatar as user_avatar,
+        (SELECT COUNT(*) FROM comments WHERE post_id = cp.id) as comment_count,
+        (SELECT COUNT(*) FROM likes WHERE post_id = cp.id) as like_count
+      FROM community_posts cp
+      LEFT JOIN users u ON cp.user_id = u.id
+    `;
+    const args: unknown[] = [];
 
     if (category) {
-      query = query.eq('category', category);
+      sql += ' WHERE cp.category = ?';
+      args.push(category);
     }
 
-    const { data: posts, error } = await query;
-    if (error) throw error;
+    sql += ' ORDER BY cp.pinned DESC, cp.created_at DESC';
 
-    const mapped = (posts || []).map((p: any) => ({
+    const result = await turso.query(sql, args);
+
+    const mapped = result.rows.map((p: any) => ({
       id: p.id,
       title: p.title,
       content: p.content,
       category: p.category,
       userId: p.user_id,
-      pinned: p.pinned,
+      pinned: !!p.pinned,
       createdAt: p.created_at,
       updatedAt: p.updated_at,
-      user: p.user,
+      user: p.user_id ? { id: p.user_id, name: p.user_name, avatar: p.user_avatar } : null,
       _count: {
-        comments: p.comments?.[0]?.count || 0,
-        likes: p.likes?.[0]?.count || 0,
+        comments: p.comment_count || 0,
+        likes: p.like_count || 0,
       },
     }));
 
@@ -75,18 +80,35 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: post, error } = await supabaseAdmin
-      .from('community_posts')
-      .insert({
-        title,
-        content,
-        category: category || 'general',
-        user_id: user.id,
-      })
-      .select('*, user:users(id, name, avatar)')
-      .single();
+    const postId = await turso.insert('community_posts', {
+      title,
+      content,
+      category: category || 'general',
+      user_id: user.id,
+      pinned: 0,
+    });
 
-    if (error) throw error;
+    // Fetch the created post with user info
+    const result = await turso.query(
+      `SELECT cp.*, u.id as user_id, u.name as user_name, u.avatar as user_avatar
+       FROM community_posts cp
+       LEFT JOIN users u ON cp.user_id = u.id
+       WHERE cp.id = ?`,
+      [postId]
+    );
+
+    const p = result.rows[0] as any;
+    const post = {
+      id: p.id,
+      title: p.title,
+      content: p.content,
+      category: p.category,
+      userId: p.user_id,
+      pinned: !!p.pinned,
+      createdAt: p.created_at,
+      updatedAt: p.updated_at,
+      user: p.user_id ? { id: p.user_id, name: p.user_name, avatar: p.user_avatar } : null,
+    };
 
     return NextResponse.json({ post }, { status: 201 });
   } catch (error) {

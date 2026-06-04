@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
+import { turso } from '@/lib/db';
 import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
 import ZAI from 'z-ai-web-dev-sdk';
 
@@ -86,7 +86,7 @@ export async function POST(request: Request) {
 
     // Log the conversation if user is authenticated
     if (userId) {
-      await supabaseAdmin.from('chatbot_logs').insert({
+      await turso.insert('chatbot_logs', {
         user_id: userId,
         message,
         response: aiResponse,

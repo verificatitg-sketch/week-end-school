@@ -204,3 +204,154 @@ Stage Summary:
 - User needs to run SQL in Supabase Dashboard SQL Editor to create tables
 - After tables are created, POST /api/seed will populate with admin user and sample data
 - Admin credentials: blunaantoine@gmail.com / admin123
+
+---
+Task ID: 3-a
+Agent: full-stack-developer
+Task: Migrate auth API routes from Supabase to Turso
+
+Work Log:
+- Migrated /src/app/api/auth/login/route.ts:
+  - Replaced `import { sb, mapUserToApi } from '@/lib/supabase'` with `import { turso, mapUserToApi } from '@/lib/db'`
+  - Replaced `sb.user.findUnique({ email })` with `turso.user.findUnique({ email })`
+  - Changed `user.role?.name` to `user.role_name` (turso DbUser stores role name as flattened `role_name` field from JOIN)
+  - `!user.is_active` check works identically with SQLite 0/1 (falsy when active=1, truthy when inactive=0)
+  - `mapUserToApi(user)` handles snake_case→camelCase including 0/1→boolean conversion
+  - Preserved identical error handling, status codes, and response format
+- Migrated /src/app/api/auth/register/route.ts:
+  - Replaced `import { sb, mapUserToApi, mapUserToDb } from '@/lib/supabase'` with `import { turso, mapUserToApi, mapUserToDb } from '@/lib/db'`
+  - Replaced `sb.user.findUnique({ email })` with `turso.user.findUnique({ email })`
+  - Replaced `sb.role.findUnique({ name: 'UTILISATEUR' })` with `turso.role.findUnique({ name: 'UTILISATEUR' })`
+  - Replaced `sb.role.create({ name, description })` with `turso.role.create({ name, description })`
+  - Replaced `sb.user.create(mapUserToDb({...}))` with `turso.user.create(mapUserToDb({...}))`
+  - Changed `user.role?.name` to `user!.role_name` (turso DbUser flattened field)
+  - `mapUserToDb()` handles camelCase→snake_case and boolean→0/1 conversion for SQLite
+  - Preserved identical error handling and 201 status code
+- Migrated /src/app/api/auth/me/route.ts:
+  - Replaced `import { supabaseAdmin, mapUserToApi } from '@/lib/supabase'` with `import { turso, mapUserToApi } from '@/lib/db'`
+  - Replaced `supabaseAdmin.from('users').select('*, role:roles(*)').eq('id', id).single()` with `turso.user.findUnique({ id })` (already JOINs roles)
+  - Replaced `supabaseAdmin.from('user_badges').select('*, badge:badges(*)').eq('user_id', id)` with `turso.query()` raw SQL JOIN
+  - Replaced `supabaseAdmin.from('mentors').select('*').eq('user_id', id).single()` with `turso.query()` raw SQL
+  - Manually mapped badges result rows: snake_case→camelCase, `!!mentorRow.is_available` for SQLite boolean
+  - Used `mapUserToApi()` for user+role transformation, then spread badges and mentorProfile onto result
+  - Preserved identical error handling and response format
+- Ran lint check: 0 errors
+- Dev server running correctly
+
+Stage Summary:
+- All 3 auth API routes successfully migrated from Supabase to Turso (libSQL/SQLite)
+- Login: turso.user.findUnique + mapUserToApi, role_name for JWT token, is_active check compatible with 0/1
+- Register: turso.user.findUnique + turso.role.findUnique/create + turso.user.create with mapUserToDb/mapUserToApi
+- Me: turso.user.findUnique for user+role, turso.query() raw SQL for badges and mentor profile with manual camelCase mapping
+- Frontend-compatible: All responses maintain camelCase field names via mapUserToApi(), booleans correctly converted from 0/1
+- Zero lint errors
+
+---
+Task ID: 3-b
+Agent: full-stack-developer
+Task: Migrate admin + courses API routes from Supabase to Turso
+
+Work Log:
+- Migrated /src/app/api/admin/stats/route.ts:
+  - Replaced `import { supabaseAdmin, sb } from '@/lib/supabase'` with `import { turso, db } from '@/lib/db'`
+  - Auth check: `sb.user.findUnique({ id })` → `turso.user.findUnique({ id })`, changed `user.role?.name` → `user.role_name`
+  - Counts: Replaced 9 parallel `supabaseAdmin.from('table').select('*', { count: 'exact', head: true })` with 9 parallel `db.execute({ sql: 'SELECT COUNT(*) as count FROM table', args: [] })`
+  - Recent activity: Replaced Supabase FK join queries with raw SQL JOINs (enrollments+users+courses, sos_alerts+users), manually constructed nested user/course objects from flat result rows
+  - Role distribution: Replaced `supabaseAdmin.from('users').select('role:roles(name)')` with `db.execute({ sql: 'SELECT r.name as role_name, COUNT(*) FROM users u LEFT JOIN roles r ON u.role_id = r.id GROUP BY r.name' })`
+  - SOS status distribution: Replaced `supabaseAdmin.from('sos_alerts').select('status')` with `db.execute({ sql: 'SELECT status, COUNT(*) as count FROM sos_alerts GROUP BY status' })`
+  - Kept `snakeToCamel`/`mapToCamelCase` utilities for recent activity key conversion
+  - Preserved identical response shape
+- Migrated /src/app/api/admin/users/route.ts:
+  - Replaced `import { supabaseAdmin, sb, mapUserToDb, DbUser } from '@/lib/supabase'` with `import { turso, db, mapUserToDb, DbUser, mapUserToApi } from '@/lib/db'`
+  - `authenticateAdmin` helper: `sb.user.findUnique` → `turso.user.findUnique`, `user.role?.name` → `user.role_name`
+  - GET endpoint: Replaced Supabase `.select(selectStr, { count: 'exact' }).or().eq().range()` with two SQL queries: COUNT for total + SELECT with JOIN for paginated users. Search via `LIKE ?` with `%search%`, role filter via `role_id = ?`.
+  - PATCH endpoint: `sb.user.findUnique` → `turso.user.findUnique`, `sb.role.findUnique` → `turso.role.findUnique`, `sb.user.update` → `turso.user.update`, `is_active` write uses `isActive ? 1 : 0` for SQLite. Audit log via `turso.insert('audit_logs', mapUserToDb({...}))`
+  - DELETE endpoint: `sb.user.findUnique` → `turso.user.findUnique`, `sb.user.delete` → `turso.user.delete`, audit log via `turso.insert('audit_logs', mapUserToDb({...}))`
+- Migrated /src/app/api/courses/route.ts:
+  - Replaced `import { supabaseAdmin, sb, mapUserToApi, mapUserToDb } from '@/lib/supabase'` with `import { turso, db, mapUserToApi } from '@/lib/db'`
+  - GET endpoint: Replaced Supabase `.select('*, enrollments(count), modules:course_modules(count)')` with raw SQL using correlated subqueries for enrollment_count and module_count. Category filter via WHERE clause. `published = 1` for SQLite boolean check.
+  - POST endpoint: `sb.user.findUnique` → `turso.user.findUnique` for auth, `supabaseAdmin.from('courses').insert().select().single()` → `turso.course.create({...})`, `published: false` → `published: 0`
+- Migrated /src/app/api/courses/[id]/route.ts:
+  - Replaced `import { supabaseAdmin, sb, mapUserToDb } from '@/lib/supabase'` with `import { turso, db } from '@/lib/db'`
+  - GET endpoint: Replaced Supabase deep nested join `.select('*, enrollments(count), modules:course_modules(*, lessons:lessons(*))')` with 3 separate queries: course lookup, enrollment count, modules+lessons (with Promise.all for per-module lesson queries). Module/lesson sorting preserved.
+  - PUT endpoint: `sb.user.findUnique` → `turso.user.findUnique` for auth, `supabaseAdmin.from('courses').update().eq().select().single()` → `turso.course.update({ id }, updateData)`, `published` write uses `published ? 1 : 0`
+- Migrated /src/app/api/enrollments/route.ts:
+  - Replaced `import { supabaseAdmin, sb } from '@/lib/supabase'` with `import { turso, db } from '@/lib/db'`
+  - GET endpoint: Replaced Supabase `.select('*, course:courses(*, modules:course_modules(count)), certificate:certificates(*)')` with raw SQL for enrollments + module_count subquery, then batch fetches for courses and certificates using IN clauses. `!!e.completed` for SQLite boolean.
+  - POST endpoint: `supabaseAdmin.from('courses').select().eq().single()` → `turso.course.findUnique({ id })`, `supabaseAdmin.from('enrollments').select().eq().single()` → `db.execute()` for duplicate check, `supabaseAdmin.from('enrollments').insert().select().single()` → `turso.insert('enrollments', {...})`, notification via `turso.insert('notifications', {...})`
+- Ran lint check: 0 errors
+- Dev server: running correctly
+
+Stage Summary:
+- All 5 API routes successfully migrated from Supabase to Turso (libSQL/SQLite)
+- /api/admin/stats: 9 parallel COUNT queries, 3 recent activity queries with SQL JOINs, 2 GROUP BY distribution queries
+- /api/admin/users: GET (search/role filter/pagination with COUNT+SELECT), PATCH (role/status update with audit log via turso.insert), DELETE (with audit log)
+- /api/courses: GET (correlated subqueries for counts, category filter, published=1), POST (turso.course.create with published=0)
+- /api/courses/[id]: GET (3 queries: course, enrollment count, modules+lessons), PUT (turso.course.update with boolean→0/1)
+- /api/enrollments: GET (enrollments with subquery count, batch IN-clause fetches for courses/certificates), POST (findUnique, duplicate check, insert, notification)
+- All responses maintain camelCase field names and identical response shapes
+- SQLite booleans: `!!value` when reading, `value ? 1 : 0` when writing
+- `mapUserToDb` used for audit_log inserts (handles camelCase→snake_case + boolean→0/1)
+- Zero lint errors
+
+---
+Task ID: 3-c
+Agent: full-stack-developer
+Task: Migrate community + SOS API routes from Supabase to Turso
+
+Work Log:
+- Migrated /src/app/api/community/route.ts:
+  - Replaced `import { supabaseAdmin, sb } from '@/lib/supabase'` with `import { turso, mapUserToApi } from '@/lib/db'`
+  - GET: Replaced Supabase query with `turso.query()` using SQL JOINs for community_posts + users, subqueries for comment_count and like_count
+  - GET: Added `!!p.pinned` for SQLite 0/1→boolean conversion; category filter via WHERE clause with parameterized query
+  - POST: Replaced `supabaseAdmin.from('community_posts').insert()` with `turso.insert('community_posts', {...})` then `turso.query()` to fetch created post with user join
+  - POST: Added `pinned: 0` for SQLite boolean default
+  - Preserved identical response format: `{ posts: [...] }` for GET, `{ post: {...} }` for POST
+- Migrated /src/app/api/community/[id]/comments/route.ts:
+  - Replaced `import { supabaseAdmin, sb } from '@/lib/supabase'` with `import { turso } from '@/lib/db'`
+  - GET: Replaced Supabase query with `turso.query()` using SQL JOIN for comments + users, ORDER BY created_at ASC
+  - POST: Replaced `supabaseAdmin.from('comments').insert()` with `turso.insert('comments', {...})` then `turso.query()` to fetch created comment with user join
+  - POST: Replaced `supabaseAdmin.from('notifications').insert()` with `turso.insert('notifications', {...})`
+  - Preserved identical response format: `{ comments: [...] }` for GET, `{ comment: {...} }` for POST
+- Migrated /src/app/api/community/[id]/like/route.ts:
+  - Replaced `import { supabaseAdmin, sb } from '@/lib/supabase'` with `import { turso } from '@/lib/db'`
+  - POST: Replaced Supabase like check with `turso.query('SELECT id FROM likes WHERE post_id = ? AND user_id = ?')`
+  - POST: Unlike uses `turso.query('DELETE FROM likes WHERE id = ?')`; Like uses `turso.insert('likes', {...})`
+  - POST: Replaced `supabaseAdmin.from('notifications').insert()` with `turso.insert('notifications', {...})`
+  - Preserved identical toggle behavior and response format: `{ liked: false }` or `{ liked: true }` (201)
+- Migrated /src/app/api/sos/route.ts:
+  - Replaced `import { supabaseAdmin, sb } from '@/lib/supabase'` with `import { turso } from '@/lib/db'`
+  - GET: Changed `user.role?.name` to `user.role_name` (turso DbUser stores role name as flattened field from JOIN)
+  - GET (regular user): Replaced Supabase query with `turso.query()` for alerts by user_id, then separate query for interventions with user JOIN
+  - GET (admin): Replaced nested Supabase queries with 3 parallel `turso.query()` calls (interventions+users, gps_updates, call_logs) using `Promise.all` and alert_ids with IN clause
+  - POST: Replaced Supabase insert with `turso.insert('sos_alerts', {...})` with booleans as 0/1 (`silent_mode: effectiveSilent ? 1 : 0`, etc.)
+  - POST: Replaced all subsequent Supabase inserts/updates with `turso.insert()` and `turso.update()` for call_logs, sos_interventions, notifications, and alert updates
+  - POST: `is_charging` handles null case: `isCharging != null ? (isCharging ? 1 : 0) : null`
+  - Added `mapIntervention()` and `mapGpsUpdate()` helper functions for snake_case→camelCase mapping
+  - Updated `mapAlert()` to use `!!value` for SQLite boolean fields (silentMode, isAnonymous, autoTriggered, etc.)
+  - `isCharging` in mapAlert: `a.is_charging != null ? !!a.is_charging : null` (preserves null for unknown)
+  - Preserved identical response format for both GET and POST
+- Migrated /src/app/api/sos/[id]/intervene/route.ts:
+  - Replaced `import { supabaseAdmin, sb } from '@/lib/supabase'` with `import { turso } from '@/lib/db'`
+  - POST: Changed `user.role?.name` to `user.role_name` for authorization check
+  - POST: Replaced Supabase alert lookup with `turso.query('SELECT * FROM sos_alerts WHERE id = ?')`
+  - POST: Replaced `supabaseAdmin.from('sos_interventions').insert()` with `turso.insert('sos_interventions', {...})` then `turso.query()` to fetch with responder join
+  - POST: Replaced `supabaseAdmin.from('sos_alerts').update()` with `turso.update('sos_alerts', { id }, { status: 'in_progress' })`
+  - POST: Replaced `supabaseAdmin.from('notifications').insert()` with `turso.insert('notifications', {...})`
+  - Preserved identical response format: `{ intervention: {...} }` with status 201
+- Migrated /src/app/api/sos/admins/route.ts:
+  - Replaced `import { supabaseAdmin } from '@/lib/supabase'` with `import { turso } from '@/lib/db'`
+  - GET: Replaced Supabase role query with `turso.query('SELECT id, name FROM roles WHERE name IN (...)')`
+  - GET: Replaced Supabase admin user query with `turso.query()` using SQL JOIN for users + roles, `is_active = 1` for SQLite boolean
+  - Preserved identical response format: `{ admins: [...] }` with id, name, phone, email, location, role
+- Verified no remaining `@/lib/supabase` imports in any of the 6 migrated files
+- Ran lint check: 0 errors
+- Dev server running correctly
+
+Stage Summary:
+- All 6 community + SOS API routes successfully migrated from Supabase to Turso (libSQL/SQLite)
+- Community routes: GET/POST posts, GET/POST comments, POST like toggle - all using turso.query() with SQL JOINs and turso.insert() for writes
+- SOS routes: GET alerts (role-based with parallel queries for interventions/gps/call_logs), POST alert (with auto-operator assignment), POST intervene, GET admins - all using turso.query()/turso.insert()/turso.update()
+- SQLite boolean handling: `!!value` when reading, `value ? 1 : 0` when writing, null-safe for optional booleans like isCharging
+- All responses maintain identical camelCase format for frontend compatibility
+- Zero lint errors

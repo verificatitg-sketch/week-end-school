@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
+import { turso, db } from '@/lib/db';
 import { hashPassword } from '@/lib/auth';
 
 export async function POST() {
@@ -19,149 +19,92 @@ export async function POST() {
     const roles: Record<string, string> = {};
     for (const name of roleNames) {
       // Check if role exists
-      const { data: existing } = await supabaseAdmin
-        .from('roles')
-        .select('id')
-        .eq('name', name)
-        .single();
-
+      const existing = await db.role.findUnique({ name });
       if (existing) {
         roles[name] = existing.id;
       } else {
-        const { data: role, error } = await supabaseAdmin
-          .from('roles')
-          .insert({ name, description: `Role: ${name}` })
-          .select()
-          .single();
-        if (error) {
-          console.error(`Failed to create role ${name}:`, error);
-          continue;
+        const newRole = await db.role.create({ name, description: `Role: ${name}` });
+        if (newRole) {
+          roles[name] = newRole.id;
         }
-        roles[name] = role.id;
       }
     }
 
     // Create super admin user
     const superAdminPassword = await hashPassword('admin123');
-    const { data: existingAdmin } = await supabaseAdmin
-      .from('users')
-      .select('id')
-      .eq('email', 'blunaantoine@gmail.com')
-      .single();
+    const existingAdmin = await db.user.findUnique({ email: 'blunaantoine@gmail.com' });
 
     let adminId: string;
     if (existingAdmin) {
       adminId = existingAdmin.id;
-      await supabaseAdmin
-        .from('users')
-        .update({ role_id: roles.SUPER_ADMIN, is_verified: true })
-        .eq('id', adminId);
+      await db.user.update({ id: adminId }, { role_id: roles.SUPER_ADMIN, is_verified: 1 });
     } else {
-      const { data: admin, error } = await supabaseAdmin
-        .from('users')
-        .insert({
-          email: 'blunaantoine@gmail.com',
-          name: 'Admin WEDS',
-          password: superAdminPassword,
-          phone: '+228 91 91 91 91',
-          location: 'Lomé, Togo',
-          role_id: roles.SUPER_ADMIN,
-          is_verified: true,
-        })
-        .select()
-        .single();
-      if (error) {
-        console.error('Failed to create admin:', error);
-        return NextResponse.json({ error: 'Failed to create admin', details: error.message }, { status: 500 });
-      }
-      adminId = admin.id;
+      adminId = await turso.insert('users', {
+        email: 'blunaantoine@gmail.com',
+        name: 'Admin WEDS',
+        password: superAdminPassword,
+        phone: '+228 91 91 91 91',
+        location: 'Lomé, Togo',
+        role_id: roles.SUPER_ADMIN,
+        is_verified: 1,
+      });
     }
 
     // Create regular user
     const userPassword = await hashPassword('user123');
-    const { data: existingUser } = await supabaseAdmin
-      .from('users')
-      .select('id')
-      .eq('email', 'user@weds.togo')
-      .single();
+    const existingUser = await db.user.findUnique({ email: 'user@weds.togo' });
 
     let regularUserId: string;
     if (existingUser) {
       regularUserId = existingUser.id;
     } else {
-      const { data: regularUser, error } = await supabaseAdmin
-        .from('users')
-        .insert({
-          email: 'user@weds.togo',
-          name: 'Ami Togo',
-          password: userPassword,
-          phone: '+228 91 00 00 00',
-          location: 'Sokodé, Togo',
-          role_id: roles.UTILISATEUR,
-          is_verified: true,
-        })
-        .select()
-        .single();
-      if (!error) regularUserId = regularUser.id;
-      else regularUserId = '';
+      regularUserId = await turso.insert('users', {
+        email: 'user@weds.togo',
+        name: 'Ami Togo',
+        password: userPassword,
+        phone: '+228 91 00 00 00',
+        location: 'Sokodé, Togo',
+        role_id: roles.UTILISATEUR,
+        is_verified: 1,
+      });
     }
 
     // Create formateur user
     const formateurPassword = await hashPassword('formateur123');
-    const { data: existingFormateur } = await supabaseAdmin
-      .from('users')
-      .select('id')
-      .eq('email', 'formateur@weds.togo')
-      .single();
+    const existingFormateur = await db.user.findUnique({ email: 'formateur@weds.togo' });
 
     let formateurId: string;
     if (existingFormateur) {
       formateurId = existingFormateur.id;
     } else {
-      const { data: formateur, error } = await supabaseAdmin
-        .from('users')
-        .insert({
-          email: 'formateur@weds.togo',
-          name: 'Kofi Mensah',
-          password: formateurPassword,
-          phone: '+228 92 00 00 00',
-          location: 'Kara, Togo',
-          role_id: roles.FORMATEUR,
-          is_verified: true,
-        })
-        .select()
-        .single();
-      if (!error) formateurId = formateur.id;
-      else formateurId = '';
+      formateurId = await turso.insert('users', {
+        email: 'formateur@weds.togo',
+        name: 'Kofi Mensah',
+        password: formateurPassword,
+        phone: '+228 92 00 00 00',
+        location: 'Kara, Togo',
+        role_id: roles.FORMATEUR,
+        is_verified: 1,
+      });
     }
 
     // Create volunteer user
     const volunteerPassword = await hashPassword('volunteer123');
-    const { data: existingVolunteer } = await supabaseAdmin
-      .from('users')
-      .select('id')
-      .eq('email', 'volunteer@weds.togo')
-      .single();
+    const existingVolunteer = await db.user.findUnique({ email: 'volunteer@weds.togo' });
 
     let volunteerId: string;
     if (existingVolunteer) {
       volunteerId = existingVolunteer.id;
     } else {
-      const { data: volunteer, error } = await supabaseAdmin
-        .from('users')
-        .insert({
-          email: 'volunteer@weds.togo',
-          name: 'Afi Lawson',
-          password: volunteerPassword,
-          phone: '+228 93 00 00 00',
-          location: 'Atakpamé, Togo',
-          role_id: roles.VOLONTAIRE,
-          is_verified: true,
-        })
-        .select()
-        .single();
-      if (!error) volunteerId = volunteer.id;
-      else volunteerId = '';
+      volunteerId = await turso.insert('users', {
+        email: 'volunteer@weds.togo',
+        name: 'Afi Lawson',
+        password: volunteerPassword,
+        phone: '+228 93 00 00 00',
+        location: 'Atakpamé, Togo',
+        role_id: roles.VOLONTAIRE,
+        is_verified: 1,
+      });
     }
 
     // Create sample opportunities
@@ -176,7 +119,7 @@ export async function POST() {
         salary: 'Indemnité de stage',
         requirements: 'Formation en médiation ou sciences sociales',
         contact_email: 'stage@paixdev.tg',
-        published: true,
+        published: 1,
       },
       {
         title: 'Emploi: Coordinateur de Programme',
@@ -188,7 +131,7 @@ export async function POST() {
         salary: '150 000 - 250 000 FCFA/mois',
         requirements: "Diplôme universitaire, 3 ans d'expérience en gestion de projet",
         contact_email: 'rh@weds.togo',
-        published: true,
+        published: 1,
       },
       {
         title: "Bourse d'Études en Leadership",
@@ -199,7 +142,7 @@ export async function POST() {
         deadline: '2025-10-01',
         requirements: 'Être âgé de 18-35 ans, résider au Togo',
         contact_email: 'bourse@fondation.tg',
-        published: true,
+        published: 1,
       },
       {
         title: 'Volontariat: Éducation Numérique',
@@ -210,18 +153,17 @@ export async function POST() {
         deadline: '2025-12-31',
         requirements: 'Connaissances en informatique, motivation et engagement',
         contact_email: 'volontaire@digitaltogo.tg',
-        published: true,
+        published: 1,
       },
     ];
 
     for (const data of opportunityData) {
-      const { data: existing } = await supabaseAdmin
-        .from('opportunities')
-        .select('id')
-        .eq('title', data.title)
-        .single();
-      if (!existing) {
-        await supabaseAdmin.from('opportunities').insert(data);
+      const existing = await turso.query(
+        'SELECT id FROM opportunities WHERE title = ? LIMIT 1',
+        [data.title]
+      );
+      if (existing.rows.length === 0) {
+        await turso.insert('opportunities', data);
       }
     }
 
@@ -251,36 +193,26 @@ export async function POST() {
     ];
 
     for (const m of mentorUsers) {
-      const { data: existingMentorUser } = await supabaseAdmin
-        .from('users')
-        .select('id')
-        .eq('email', m.email)
-        .single();
+      const existingMentorUser = await db.user.findUnique({ email: m.email });
 
       if (!existingMentorUser) {
         const mPassword = await hashPassword('mentor123');
-        const { data: newMentorUser } = await supabaseAdmin
-          .from('users')
-          .insert({
-            email: m.email,
-            name: m.name,
-            password: mPassword,
-            location: 'Lomé, Togo',
-            role_id: roles.MENTOR,
-            is_verified: true,
-          })
-          .select()
-          .single();
+        const newMentorUserId = await turso.insert('users', {
+          email: m.email,
+          name: m.name,
+          password: mPassword,
+          location: 'Lomé, Togo',
+          role_id: roles.MENTOR,
+          is_verified: 1,
+        });
 
-        if (newMentorUser) {
-          await supabaseAdmin.from('mentors').insert({
-            user_id: newMentorUser.id,
-            expertise: m.expertise,
-            availability: m.availability,
-            experience: m.experience,
-            rating: 4.5 + Math.random() * 0.5,
-          });
-        }
+        await turso.insert('mentors', {
+          user_id: newMentorUserId,
+          expertise: m.expertise,
+          availability: m.availability,
+          experience: m.experience,
+          rating: 4.5 + Math.random() * 0.5,
+        });
       }
     }
 
@@ -291,33 +223,32 @@ export async function POST() {
         content: "Nous sommes ravis de vous accueillir sur la plateforme WEEK-END SCHOOL DIGITAL. Ici, vous pouvez partager vos expériences, poser des questions, et échanger avec d'autres membres de la communauté. Ensemble, construisons la paix par l'éducation!",
         category: 'general',
         user_id: adminId,
-        pinned: true,
+        pinned: 1,
       },
       {
         title: 'Témoignage: Comment la médiation a sauvé mon village',
         content: "Il y a deux ans, notre village était divisé par un conflit foncier. Grâce aux techniques de médiation apprises sur WEDS, j'ai pu faciliter le dialogue entre les parties. Aujourd'hui, nous vivons en paix et collaborons même sur des projets agricoles communs.",
         category: 'temoignage',
         user_id: regularUserId,
-        pinned: false,
+        pinned: 0,
       },
       {
         title: 'Conseils pour réussir votre formation en ligne',
         content: "Voici quelques conseils pour tirer le meilleur parti de vos cours sur WEDS:\n1. Fixez un horaire régulier d'étude\n2. Participez aux discussions communautaires\n3. N'hésitez pas à demander de l'aide aux mentors\n4. Appliquez ce que vous apprenez dans votre quotidien\n5. Célébrez vos progrès!",
         category: 'conseil',
         user_id: formateurId,
-        pinned: false,
+        pinned: 0,
       },
     ];
 
     for (const data of postData) {
       if (!data.user_id) continue;
-      const { data: existing } = await supabaseAdmin
-        .from('community_posts')
-        .select('id')
-        .eq('title', data.title)
-        .single();
-      if (!existing) {
-        await supabaseAdmin.from('community_posts').insert(data);
+      const existing = await turso.query(
+        'SELECT id FROM community_posts WHERE title = ? LIMIT 1',
+        [data.title]
+      );
+      if (existing.rows.length === 0) {
+        await turso.insert('community_posts', data);
       }
     }
 
@@ -330,27 +261,20 @@ export async function POST() {
     ];
 
     for (const data of groupData) {
-      const { data: existingGroup } = await supabaseAdmin
-        .from('groups')
-        .select('id')
-        .eq('name', data.name)
-        .single();
+      const existingGroup = await turso.query(
+        'SELECT id FROM groups WHERE name = ? LIMIT 1',
+        [data.name]
+      );
 
-      if (!existingGroup) {
-        const { data: group } = await supabaseAdmin
-          .from('groups')
-          .insert(data)
-          .select()
-          .single();
+      if (existingGroup.rows.length === 0) {
+        const groupId = await turso.insert('groups', data);
 
-        if (group) {
-          // Add admin and regular user to groups
-          const members = [];
-          if (adminId) members.push({ user_id: adminId, group_id: group.id, role: 'admin' });
-          if (regularUserId) members.push({ user_id: regularUserId, group_id: group.id, role: 'member' });
-          if (members.length > 0) {
-            await supabaseAdmin.from('group_members').insert(members);
-          }
+        // Add admin and regular user to groups
+        if (adminId) {
+          await turso.insert('group_members', { user_id: adminId, group_id: groupId, role: 'admin' });
+        }
+        if (regularUserId) {
+          await turso.insert('group_members', { user_id: regularUserId, group_id: groupId, role: 'member' });
         }
       }
     }
@@ -368,13 +292,12 @@ export async function POST() {
     ];
 
     for (const data of badgeData) {
-      const { data: existingBadge } = await supabaseAdmin
-        .from('badges')
-        .select('id')
-        .eq('name', data.name)
-        .single();
-      if (!existingBadge) {
-        await supabaseAdmin.from('badges').insert(data);
+      const existingBadge = await turso.query(
+        'SELECT id FROM badges WHERE name = ? LIMIT 1',
+        [data.name]
+      );
+      if (existingBadge.rows.length === 0) {
+        await turso.insert('badges', data);
       }
     }
 
@@ -402,11 +325,13 @@ export async function POST() {
           link: '/opportunities',
         },
       ];
-      await supabaseAdmin.from('notifications').insert(notifData);
+      for (const data of notifData) {
+        await turso.insert('notifications', data);
+      }
     }
 
     return NextResponse.json({
-      message: 'Database seeded successfully (Supabase)',
+      message: 'Database seeded successfully (Turso)',
       data: {
         roles: roleNames.length,
         users: 4,

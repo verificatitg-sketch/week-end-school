@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, sb } from '@/lib/supabase';
+import { turso, db } from '@/lib/db';
 import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
 
 async function getAuthUser(request: Request) {
@@ -7,19 +7,21 @@ async function getAuthUser(request: Request) {
   if (!token) return null;
   const payload = await verifyToken(token);
   if (!payload) return null;
-  const user = await sb.user.findUnique({ id: payload.userId as string });
+  const user = await db.user.findUnique({ id: payload.userId as string });
   return user;
 }
 
 export async function GET() {
   try {
-    const { data: mentors, error } = await supabaseAdmin
-      .from('mentors')
-      .select('*, user:users(id, name, email, avatar, bio, location)')
-      .eq('accept_requests', true)
-      .order('rating', { ascending: false });
+    const result = await turso.query(
+      `SELECT m.*, u.id as user_id, u.name as user_name, u.email as user_email, u.avatar as user_avatar, u.bio as user_bio, u.location as user_location
+       FROM mentors m 
+       JOIN users u ON m.user_id = u.id 
+       WHERE m.accept_requests = 1 
+       ORDER BY m.rating DESC`
+    );
 
-    if (error) throw error;
+    const mentors = result.rows;
 
     const mapped = (mentors || []).map((m: any) => ({
       id: m.id,
@@ -28,8 +30,15 @@ export async function GET() {
       availability: m.availability,
       experience: m.experience,
       rating: m.rating,
-      acceptRequests: m.accept_requests,
-      user: m.user,
+      acceptRequests: !!m.accept_requests,
+      user: {
+        id: m.user_id,
+        name: m.user_name,
+        email: m.user_email,
+        avatar: m.user_avatar,
+        bio: m.user_bio,
+        location: m.user_location,
+      },
     }));
 
     return NextResponse.json({ mentors: mapped });
@@ -53,13 +62,12 @@ export async function POST(request: Request) {
     }
 
     // Check if already a mentor
-    const { data: existing } = await supabaseAdmin
-      .from('mentors')
-      .select('id')
-      .eq('user_id', user.id)
-      .single();
+    const existing = await turso.findMany('mentors', {
+      where: { user_id: user.id },
+      limit: 1,
+    });
 
-    if (existing) {
+    if (existing && existing.length > 0) {
       return NextResponse.json(
         { error: 'You are already registered as a mentor' },
         { status: 409 }
@@ -77,29 +85,34 @@ export async function POST(request: Request) {
     }
 
     // Update role to MENTOR
-    const mentorRole = await sb.role.findUnique({ name: 'MENTOR' });
+    const mentorRole = await db.role.findUnique({ name: 'MENTOR' });
     if (!mentorRole) {
       // Create the role if it doesn't exist
-      const newRole = await sb.role.create({ name: 'MENTOR', description: 'Mentor role' });
+      const newRole = await db.role.create({ name: 'MENTOR', description: 'Mentor role' });
       if (newRole) {
-        await sb.user.update({ id: user.id }, { role_id: newRole.id });
+        await db.user.update({ id: user.id }, { role_id: newRole.id });
       }
     } else {
-      await sb.user.update({ id: user.id }, { role_id: mentorRole.id });
+      await db.user.update({ id: user.id }, { role_id: mentorRole.id });
     }
 
-    const { data: mentor, error } = await supabaseAdmin
-      .from('mentors')
-      .insert({
-        user_id: user.id,
-        expertise,
-        availability,
-        experience: experience || null,
-      })
-      .select('*, user:users(id, name, email, avatar, bio)')
-      .single();
+    const mentorId = await turso.insert('mentors', {
+      user_id: user.id,
+      expertise,
+      availability,
+      experience: experience || null,
+    });
 
-    if (error) throw error;
+    // Fetch the mentor with user data
+    const mentorResult = await turso.query(
+      `SELECT m.*, u.id as user_id, u.name as user_name, u.email as user_email, u.avatar as user_avatar, u.bio as user_bio
+       FROM mentors m 
+       JOIN users u ON m.user_id = u.id 
+       WHERE m.id = ?`,
+      [mentorId]
+    );
+
+    const mentor = mentorResult.rows[0] || null;
 
     return NextResponse.json({ mentor }, { status: 201 });
   } catch (error) {

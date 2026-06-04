@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, sb, mapUserToDb, DbUser } from '@/lib/supabase';
+import { turso, db, mapUserToDb, DbUser, mapUserToApi } from '@/lib/db';
 import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
 
 /**
@@ -26,7 +26,7 @@ async function authenticateAdmin(
     );
   }
 
-  const user = await sb.user.findUnique({ id: payload.userId as string });
+  const user = await turso.user.findUnique({ id: payload.userId as string });
 
   if (!user) {
     return NextResponse.json(
@@ -35,8 +35,8 @@ async function authenticateAdmin(
     );
   }
 
-  const isSuperAdmin = user.role?.name === 'SUPER_ADMIN';
-  const isAdmin = isSuperAdmin || user.role?.name === 'ADMIN';
+  const isSuperAdmin = user.role_name === 'SUPER_ADMIN';
+  const isAdmin = isSuperAdmin || user.role_name === 'ADMIN';
 
   if (requireSuperAdmin && !isSuperAdmin) {
     return NextResponse.json(
@@ -74,7 +74,7 @@ export async function GET(request: Request) {
     // If role filter specified, look up the role_id first
     let roleId: string | null = null;
     if (role) {
-      const roleRecord = await sb.role.findUnique({ name: role });
+      const roleRecord = await turso.role.findUnique({ name: role });
       if (!roleRecord) {
         // Role doesn't exist, return empty results
         return NextResponse.json({
@@ -88,55 +88,62 @@ export async function GET(request: Request) {
       roleId = roleRecord.id;
     }
 
-    // Build the Supabase query with count
-    const selectStr = 'id, email, name, phone, is_active, is_verified, avatar, created_at, role:roles(id, name)';
-    let query = supabaseAdmin
-      .from('users')
-      .select(selectStr, { count: 'exact' });
+    // Build WHERE conditions
+    const conditions: string[] = [];
+    const args: unknown[] = [];
 
-    // Apply search filter
     if (search) {
-      query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`);
+      conditions.push('(u.name LIKE ? OR u.email LIKE ? OR u.phone LIKE ?)');
+      args.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
 
-    // Apply role filter
     if (roleId) {
-      query = query.eq('role_id', roleId);
+      conditions.push('u.role_id = ?');
+      args.push(roleId);
     }
 
-    // Order and paginate
-    query = query.order('created_at', { ascending: false });
-    query = query.range(offset, offset + limit - 1);
+    const whereClause = conditions.length > 0 ? ' WHERE ' + conditions.join(' AND ') : '';
 
-    const { data: usersRaw, count: total, error } = await query;
+    // Count total
+    const countRes = await db.execute({
+      sql: `SELECT COUNT(*) as count FROM users u${whereClause}`,
+      args,
+    });
+    const total = (countRes.rows[0] as Record<string, unknown>)?.count as number || 0;
 
-    if (error) {
-      console.error('Get admin users query error:', error);
-      return NextResponse.json(
-        { error: 'Internal server error' },
-        { status: 500 }
-      );
-    }
+    // Fetch paginated users with role join
+    const usersRes = await db.execute({
+      sql: `SELECT u.id, u.email, u.name, u.phone, u.is_active, u.is_verified, u.avatar, u.created_at,
+             r.name as role_name
+             FROM users u LEFT JOIN roles r ON u.role_id = r.id
+             ${whereClause}
+             ORDER BY u.created_at DESC
+             LIMIT ? OFFSET ?`,
+      args: [...args, limit, offset],
+    });
 
-    // Map snake_case to camelCase with role as string name
-    const users = (usersRaw || []).map((u: Record<string, unknown>) => ({
-      id: u.id,
-      email: u.email,
-      name: u.name,
-      phone: u.phone,
-      isActive: u.is_active,
-      isVerified: u.is_verified,
-      avatar: u.avatar,
-      createdAt: u.created_at,
-      role: (u.role as { name: string } | null)?.name || 'UTILISATEUR',
-    }));
+    // Map to camelCase with role as string name
+    const users = usersRes.rows.map((u) => {
+      const row = u as Record<string, unknown>;
+      return {
+        id: row.id,
+        email: row.email,
+        name: row.name,
+        phone: row.phone,
+        isActive: !!row.is_active,
+        isVerified: !!row.is_verified,
+        avatar: row.avatar,
+        createdAt: row.created_at,
+        role: row.role_name || 'UTILISATEUR',
+      };
+    });
 
     return NextResponse.json({
       users,
-      total: total || 0,
+      total,
       page,
       limit,
-      totalPages: Math.ceil((total || 0) / limit),
+      totalPages: Math.ceil(total / limit),
     });
   } catch (error) {
     console.error('Get admin users error:', error);
@@ -184,7 +191,7 @@ export async function PATCH(request: Request) {
 
     // Role protection: only SUPER_ADMIN can assign ADMIN or SUPER_ADMIN roles
     if (roleName && (roleName === 'ADMIN' || roleName === 'SUPER_ADMIN')) {
-      if (adminUser.role?.name !== 'SUPER_ADMIN') {
+      if (adminUser.role_name !== 'SUPER_ADMIN') {
         return NextResponse.json(
           { error: 'Only super admins can assign ADMIN or SUPER_ADMIN roles' },
           { status: 403 }
@@ -193,7 +200,7 @@ export async function PATCH(request: Request) {
     }
 
     // Find the target user
-    const targetUser = await sb.user.findUnique({ id: userId });
+    const targetUser = await turso.user.findUnique({ id: userId });
 
     if (!targetUser) {
       return NextResponse.json(
@@ -202,11 +209,11 @@ export async function PATCH(request: Request) {
       );
     }
 
-    // Build update data (snake_case for Supabase)
+    // Build update data (snake_case for SQLite)
     const updateData: Record<string, unknown> = {};
 
     if (roleName) {
-      const roleRecord = await sb.role.findUnique({ name: roleName });
+      const roleRecord = await turso.role.findUnique({ name: roleName });
       if (!roleRecord) {
         return NextResponse.json(
           { error: `Role "${roleName}" not found` },
@@ -217,11 +224,18 @@ export async function PATCH(request: Request) {
     }
 
     if (isActive !== undefined) {
-      updateData.is_active = isActive;
+      updateData.is_active = isActive ? 1 : 0;
     }
 
     // Update the user
-    const updatedUserRaw = await sb.user.update({ id: userId }, updateData);
+    const updatedUserRaw = await turso.user.update({ id: userId }, updateData);
+
+    if (!updatedUserRaw) {
+      return NextResponse.json(
+        { error: 'Failed to update user' },
+        { status: 500 }
+      );
+    }
 
     // Map to camelCase with role as string name
     const updatedUser = {
@@ -229,12 +243,12 @@ export async function PATCH(request: Request) {
       email: updatedUserRaw.email,
       name: updatedUserRaw.name,
       phone: updatedUserRaw.phone,
-      isActive: updatedUserRaw.is_active,
-      isVerified: updatedUserRaw.is_verified,
+      isActive: !!updatedUserRaw.is_active,
+      isVerified: !!updatedUserRaw.is_verified,
       avatar: updatedUserRaw.avatar,
       createdAt: updatedUserRaw.created_at,
       updatedAt: updatedUserRaw.updated_at,
-      role: updatedUserRaw.role?.name || 'UTILISATEUR',
+      role: updatedUserRaw.role_name || 'UTILISATEUR',
     };
 
     // Create audit log
@@ -242,12 +256,12 @@ export async function PATCH(request: Request) {
     if (roleName) details.role = roleName;
     if (isActive !== undefined) details.isActive = isActive;
 
-    await supabaseAdmin.from('audit_logs').insert(mapUserToDb({
+    await turso.insert('audit_logs', mapUserToDb({
       userId: adminUser.id,
       action: isActive === false ? 'DEACTIVATE_USER' : isActive === true ? 'ACTIVATE_USER' : 'UPDATE_USER_ROLE',
       resource: 'USER',
       details: JSON.stringify(details),
-    })).select().single();
+    }));
 
     return NextResponse.json({ user: updatedUser });
   } catch (error) {
@@ -288,7 +302,7 @@ export async function DELETE(request: Request) {
     }
 
     // Check target user exists
-    const targetUser = await sb.user.findUnique({ id: userId });
+    const targetUser = await turso.user.findUnique({ id: userId });
 
     if (!targetUser) {
       return NextResponse.json(
@@ -298,15 +312,15 @@ export async function DELETE(request: Request) {
     }
 
     // Delete the user
-    await sb.user.delete({ id: userId });
+    await turso.user.delete({ id: userId });
 
     // Create audit log
-    await supabaseAdmin.from('audit_logs').insert(mapUserToDb({
+    await turso.insert('audit_logs', mapUserToDb({
       userId: adminUser.id,
       action: 'DELETE_USER',
       resource: 'USER',
       details: JSON.stringify({ userId, email: targetUser.email, name: targetUser.name }),
-    })).select().single();
+    }));
 
     return NextResponse.json({ message: 'User deleted successfully' });
   } catch (error) {
