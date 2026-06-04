@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseAdmin, mapUserToApi } from '@/lib/supabase';
 import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
 
 export async function GET(request: Request) {
@@ -20,23 +20,74 @@ export async function GET(request: Request) {
       );
     }
 
-    const user = await db.user.findUnique({
-      where: { id: payload.userId as string },
-      include: {
-        role: true,
-        badges: { include: { badge: true } },
-        mentorProfile: true,
-      },
-    });
+    const id = payload.userId as string;
 
-    if (!user) {
+    // Fetch user with role
+    const { data: dbUser, error: userError } = await supabaseAdmin
+      .from('users')
+      .select('*, role:roles(*)')
+      .eq('id', id)
+      .single();
+
+    if (userError || !dbUser) {
       return NextResponse.json(
         { error: 'User not found' },
         { status: 404 }
       );
     }
 
-    const { password: _, ...userWithoutPassword } = user;
+    // Fetch badges separately (Supabase doesn't support deep nested includes like Prisma)
+    const { data: dbBadges } = await supabaseAdmin
+      .from('user_badges')
+      .select('*, badge:badges(*)')
+      .eq('user_id', id);
+
+    // Fetch mentor profile separately
+    const { data: dbMentorProfile } = await supabaseAdmin
+      .from('mentors')
+      .select('*')
+      .eq('user_id', id)
+      .single();
+
+    // Map user to API format (camelCase)
+    const mappedUser = mapUserToApi(dbUser);
+    if (!mappedUser) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      );
+    }
+
+    // Add badges with camelCase mapping
+    const badges = (dbBadges || []).map((ub: Record<string, unknown>) => ({
+      id: ub.id,
+      userId: ub.user_id,
+      badgeId: ub.badge_id,
+      earnedAt: ub.earned_at ?? ub.created_at,
+      badge: ub.badge,
+    }));
+
+    // Add mentor profile with camelCase mapping
+    const mentorProfile = dbMentorProfile
+      ? (() => {
+          const mp = dbMentorProfile as Record<string, unknown>;
+          return {
+            id: mp.id,
+            userId: mp.user_id,
+            bio: mp.bio,
+            expertise: mp.expertise,
+            isAvailable: mp.is_available,
+            createdAt: mp.created_at,
+            updatedAt: mp.updated_at,
+          };
+        })()
+      : null;
+
+    const { password: _, ...userWithoutPassword } = {
+      ...mappedUser,
+      badges,
+      mentorProfile,
+    };
 
     return NextResponse.json({ user: userWithoutPassword });
   } catch (error) {

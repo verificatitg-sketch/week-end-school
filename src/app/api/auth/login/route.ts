@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { sb, mapUserToApi } from '@/lib/supabase';
 import { verifyPassword, createToken } from '@/lib/auth';
 
 export async function POST(request: Request) {
@@ -14,10 +14,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const user = await db.user.findUnique({
-      where: { email },
-      include: { role: true },
-    });
+    const user = await sb.user.findUnique({ email });
 
     if (!user) {
       return NextResponse.json(
@@ -34,7 +31,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!user.isActive) {
+    if (!user.is_active) {
       return NextResponse.json(
         { error: 'Account is deactivated' },
         { status: 403 }
@@ -47,12 +44,12 @@ export async function POST(request: Request) {
       role: user.role?.name,
     });
 
-    const { password: _, ...userWithoutPassword } = user;
+    const { password: _, ...mappedUser } = mapUserToApi(user)!;
 
     return NextResponse.json({
       message: 'Login successful',
       token,
-      user: userWithoutPassword,
+      user: mappedUser,
     });
   } catch (error) {
     console.error('Login error:', error);

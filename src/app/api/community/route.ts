@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseAdmin, sb } from '@/lib/supabase';
 import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
 
 async function getAuthUser(request: Request) {
@@ -7,10 +7,7 @@ async function getAuthUser(request: Request) {
   if (!token) return null;
   const payload = await verifyToken(token);
   if (!payload) return null;
-  const user = await db.user.findUnique({
-    where: { id: payload.userId as string },
-    include: { role: true },
-  });
+  const user = await sb.user.findUnique({ id: payload.userId as string });
   return user;
 }
 
@@ -19,30 +16,36 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
 
-    const where: Record<string, unknown> = {};
+    let query = supabaseAdmin
+      .from('community_posts')
+      .select('*, user:users(id, name, avatar), comments(count), likes(count)')
+      .order('pinned', { ascending: false })
+      .order('created_at', { ascending: false });
+
     if (category) {
-      where.category = category;
+      query = query.eq('category', category);
     }
 
-    const posts = await db.communityPost.findMany({
-      where,
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            avatar: true,
-          },
-        },
-        _count: { select: { comments: true, likes: true } },
-      },
-      orderBy: [
-        { pinned: 'desc' },
-        { createdAt: 'desc' },
-      ],
-    });
+    const { data: posts, error } = await query;
+    if (error) throw error;
 
-    return NextResponse.json({ posts });
+    const mapped = (posts || []).map((p: any) => ({
+      id: p.id,
+      title: p.title,
+      content: p.content,
+      category: p.category,
+      userId: p.user_id,
+      pinned: p.pinned,
+      createdAt: p.created_at,
+      updatedAt: p.updated_at,
+      user: p.user,
+      _count: {
+        comments: p.comments?.[0]?.count || 0,
+        likes: p.likes?.[0]?.count || 0,
+      },
+    }));
+
+    return NextResponse.json({ posts: mapped });
   } catch (error) {
     console.error('Get community posts error:', error);
     return NextResponse.json(
@@ -72,23 +75,18 @@ export async function POST(request: Request) {
       );
     }
 
-    const post = await db.communityPost.create({
-      data: {
+    const { data: post, error } = await supabaseAdmin
+      .from('community_posts')
+      .insert({
         title,
         content,
         category: category || 'general',
-        userId: user.id,
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            avatar: true,
-          },
-        },
-      },
-    });
+        user_id: user.id,
+      })
+      .select('*, user:users(id, name, avatar)')
+      .single();
+
+    if (error) throw error;
 
     return NextResponse.json({ post }, { status: 201 });
   } catch (error) {

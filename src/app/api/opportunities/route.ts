@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseAdmin, sb } from '@/lib/supabase';
 import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
 
 async function getAuthUser(request: Request) {
@@ -7,10 +7,7 @@ async function getAuthUser(request: Request) {
   if (!token) return null;
   const payload = await verifyToken(token);
   if (!payload) return null;
-  const user = await db.user.findUnique({
-    where: { id: payload.userId as string },
-    include: { role: true },
-  });
+  const user = await sb.user.findUnique({ id: payload.userId as string });
   return user;
 }
 
@@ -19,20 +16,43 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type');
 
-    const where: Record<string, unknown> = { published: true };
+    let query = supabaseAdmin
+      .from('opportunities')
+      .select('*, applications(count)')
+      .eq('published', true)
+      .order('created_at', { ascending: false });
+
     if (type) {
-      where.type = type;
+      query = query.eq('type', type);
     }
 
-    const opportunities = await db.opportunity.findMany({
-      where,
-      include: {
-        _count: { select: { applications: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const { data: opportunities, error } = await query;
+    if (error) throw error;
 
-    return NextResponse.json({ opportunities });
+    const mapped = (opportunities || []).map((o: any) => ({
+      id: o.id,
+      title: o.title,
+      description: o.description,
+      type: o.type,
+      organization: o.organization,
+      location: o.location,
+      latitude: o.latitude,
+      longitude: o.longitude,
+      deadline: o.deadline,
+      salary: o.salary,
+      requirements: o.requirements,
+      contactEmail: o.contact_email,
+      contactPhone: o.contact_phone,
+      url: o.url,
+      published: o.published,
+      createdAt: o.created_at,
+      updatedAt: o.updated_at,
+      _count: {
+        applications: o.applications?.[0]?.count || 0,
+      },
+    }));
+
+    return NextResponse.json({ opportunities: mapped });
   } catch (error) {
     console.error('Get opportunities error:', error);
     return NextResponse.json(
@@ -63,19 +83,9 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const {
-      title,
-      description,
-      type,
-      organization,
-      location,
-      latitude,
-      longitude,
-      deadline,
-      salary,
-      requirements,
-      contactEmail,
-      contactPhone,
-      url,
+      title, description, type, organization, location,
+      latitude, longitude, deadline, salary, requirements,
+      contactEmail, contactPhone, url,
     } = body;
 
     if (!title || !description || !type) {
@@ -85,8 +95,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const opportunity = await db.opportunity.create({
-      data: {
+    const { data: opportunity, error } = await supabaseAdmin
+      .from('opportunities')
+      .insert({
         title,
         description,
         type,
@@ -97,11 +108,14 @@ export async function POST(request: Request) {
         deadline: deadline || null,
         salary: salary || null,
         requirements: requirements || null,
-        contactEmail: contactEmail || null,
-        contactPhone: contactPhone || null,
+        contact_email: contactEmail || null,
+        contact_phone: contactPhone || null,
         url: url || null,
-      },
-    });
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
 
     return NextResponse.json({ opportunity }, { status: 201 });
   } catch (error) {

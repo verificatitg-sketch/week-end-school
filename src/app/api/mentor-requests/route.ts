@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseAdmin, sb } from '@/lib/supabase';
 import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
 
 async function getAuthUser(request: Request) {
@@ -7,10 +7,7 @@ async function getAuthUser(request: Request) {
   if (!token) return null;
   const payload = await verifyToken(token);
   if (!payload) return null;
-  const user = await db.user.findUnique({
-    where: { id: payload.userId as string },
-    include: { role: true },
-  });
+  const user = await sb.user.findUnique({ id: payload.userId as string });
   return user;
 }
 
@@ -24,26 +21,26 @@ export async function GET(request: Request) {
       );
     }
 
-    const requests = await db.mentorRequest.findMany({
-      where: { menteeId: user.id },
-      include: {
-        mentor: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                avatar: true,
-              },
-            },
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const { data: requests, error } = await supabaseAdmin
+      .from('mentor_requests')
+      .select('*, mentor:mentors(*, user:users(id, name, email, avatar))')
+      .eq('mentee_id', user.id)
+      .order('created_at', { ascending: false });
 
-    return NextResponse.json({ requests });
+    if (error) throw error;
+
+    const mapped = (requests || []).map((r: any) => ({
+      id: r.id,
+      menteeId: r.mentee_id,
+      mentorId: r.mentor_id,
+      message: r.message,
+      status: r.status,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      mentor: r.mentor,
+    }));
+
+    return NextResponse.json({ requests: mapped });
   } catch (error) {
     console.error('Get mentor requests error:', error);
     return NextResponse.json(
@@ -74,11 +71,13 @@ export async function POST(request: Request) {
     }
 
     // Check mentor exists and accepts requests
-    const mentor = await db.mentor.findUnique({
-      where: { id: mentorId },
-    });
+    const { data: mentor } = await supabaseAdmin
+      .from('mentors')
+      .select('*')
+      .eq('id', mentorId)
+      .single();
 
-    if (!mentor || !mentor.acceptRequests) {
+    if (!mentor || !mentor.accept_requests) {
       return NextResponse.json(
         { error: 'Mentor not available for requests' },
         { status: 404 }
@@ -86,13 +85,13 @@ export async function POST(request: Request) {
     }
 
     // Check if request already exists
-    const existing = await db.mentorRequest.findFirst({
-      where: {
-        menteeId: user.id,
-        mentorId,
-        status: 'pending',
-      },
-    });
+    const { data: existing } = await supabaseAdmin
+      .from('mentor_requests')
+      .select('id')
+      .eq('mentee_id', user.id)
+      .eq('mentor_id', mentorId)
+      .eq('status', 'pending')
+      .single();
 
     if (existing) {
       return NextResponse.json(
@@ -101,28 +100,25 @@ export async function POST(request: Request) {
       );
     }
 
-    const mentorRequest = await db.mentorRequest.create({
-      data: {
-        menteeId: user.id,
-        mentorId,
+    const { data: mentorRequest, error } = await supabaseAdmin
+      .from('mentor_requests')
+      .insert({
+        mentee_id: user.id,
+        mentor_id: mentorId,
         message: message || null,
-      },
-    });
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
 
     // Notify the mentor
-    const mentorUser = await db.user.findUnique({
-      where: { id: mentor.userId },
+    await supabaseAdmin.from('notifications').insert({
+      user_id: mentor.user_id,
+      title: 'Nouvelle demande de mentorat',
+      message: `${user.name} vous a envoyé une demande de mentorat`,
+      type: 'mentorship',
     });
-    if (mentorUser) {
-      await db.notification.create({
-        data: {
-          userId: mentor.userId,
-          title: 'Nouvelle demande de mentorat',
-          message: `${user.name} vous a envoyé une demande de mentorat`,
-          type: 'mentorship',
-        },
-      });
-    }
 
     return NextResponse.json({ request: mentorRequest }, { status: 201 });
   } catch (error) {

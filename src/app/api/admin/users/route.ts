@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseAdmin, sb, mapUserToDb, DbUser } from '@/lib/supabase';
 import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
 
 /**
@@ -9,7 +9,7 @@ import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
 async function authenticateAdmin(
   headers: Headers,
   requireSuperAdmin = false
-): Promise<{ user: Awaited<ReturnType<typeof db.user.findUnique>> } | NextResponse> {
+): Promise<{ user: DbUser } | NextResponse> {
   const token = getTokenFromHeaders(headers);
   if (!token) {
     return NextResponse.json(
@@ -26,10 +26,7 @@ async function authenticateAdmin(
     );
   }
 
-  const user = await db.user.findUnique({
-    where: { id: payload.userId as string },
-    include: { role: true },
-  });
+  const user = await sb.user.findUnique({ id: payload.userId as string });
 
   if (!user) {
     return NextResponse.json(
@@ -72,57 +69,74 @@ export async function GET(request: Request) {
     const role = searchParams.get('role') || '';
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20', 10)));
+    const offset = (page - 1) * limit;
 
-    // Build where clause
-    const where: Record<string, unknown> = {};
-
-    if (search) {
-      where.OR = [
-        { name: { contains: search } },
-        { email: { contains: search } },
-        { phone: { contains: search } },
-      ];
-    }
-
+    // If role filter specified, look up the role_id first
+    let roleId: string | null = null;
     if (role) {
-      where.role = { name: role };
+      const roleRecord = await sb.role.findUnique({ name: role });
+      if (!roleRecord) {
+        // Role doesn't exist, return empty results
+        return NextResponse.json({
+          users: [],
+          total: 0,
+          page,
+          limit,
+          totalPages: 0,
+        });
+      }
+      roleId = roleRecord.id;
     }
 
-    const [usersRaw, total] = await Promise.all([
-      db.user.findMany({
-        where,
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          phone: true,
-          isActive: true,
-          isVerified: true,
-          avatar: true,
-          createdAt: true,
-          role: {
-            select: { id: true, name: true },
-          },
-        },
-        orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      db.user.count({ where }),
-    ]);
+    // Build the Supabase query with count
+    const selectStr = 'id, email, name, phone, is_active, is_verified, avatar, created_at, role:roles(id, name)';
+    let query = supabaseAdmin
+      .from('users')
+      .select(selectStr, { count: 'exact' });
 
-    // Map role object to role name string for frontend compatibility
-    const users = usersRaw.map((u) => ({
-      ...u,
+    // Apply search filter
+    if (search) {
+      query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`);
+    }
+
+    // Apply role filter
+    if (roleId) {
+      query = query.eq('role_id', roleId);
+    }
+
+    // Order and paginate
+    query = query.order('created_at', { ascending: false });
+    query = query.range(offset, offset + limit - 1);
+
+    const { data: usersRaw, count: total, error } = await query;
+
+    if (error) {
+      console.error('Get admin users query error:', error);
+      return NextResponse.json(
+        { error: 'Internal server error' },
+        { status: 500 }
+      );
+    }
+
+    // Map snake_case to camelCase with role as string name
+    const users = (usersRaw || []).map((u: Record<string, unknown>) => ({
+      id: u.id,
+      email: u.email,
+      name: u.name,
+      phone: u.phone,
+      isActive: u.is_active,
+      isVerified: u.is_verified,
+      avatar: u.avatar,
+      createdAt: u.created_at,
       role: (u.role as { name: string } | null)?.name || 'UTILISATEUR',
     }));
 
     return NextResponse.json({
       users,
-      total,
+      total: total || 0,
       page,
       limit,
-      totalPages: Math.ceil(total / limit),
+      totalPages: Math.ceil((total || 0) / limit),
     });
   } catch (error) {
     console.error('Get admin users error:', error);
@@ -179,10 +193,7 @@ export async function PATCH(request: Request) {
     }
 
     // Find the target user
-    const targetUser = await db.user.findUnique({
-      where: { id: userId },
-      include: { role: true },
-    });
+    const targetUser = await sb.user.findUnique({ id: userId });
 
     if (!targetUser) {
       return NextResponse.json(
@@ -191,48 +202,39 @@ export async function PATCH(request: Request) {
       );
     }
 
-    // Build update data
+    // Build update data (snake_case for Supabase)
     const updateData: Record<string, unknown> = {};
 
     if (roleName) {
-      const roleRecord = await db.role.findUnique({ where: { name: roleName } });
+      const roleRecord = await sb.role.findUnique({ name: roleName });
       if (!roleRecord) {
         return NextResponse.json(
           { error: `Role "${roleName}" not found` },
           { status: 404 }
         );
       }
-      updateData.roleId = roleRecord.id;
+      updateData.role_id = roleRecord.id;
     }
 
     if (isActive !== undefined) {
-      updateData.isActive = isActive;
+      updateData.is_active = isActive;
     }
 
     // Update the user
-    const updatedUserRaw = await db.user.update({
-      where: { id: userId },
-      data: updateData,
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        phone: true,
-        isActive: true,
-        isVerified: true,
-        avatar: true,
-        createdAt: true,
-        updatedAt: true,
-        role: {
-          select: { id: true, name: true },
-        },
-      },
-    });
+    const updatedUserRaw = await sb.user.update({ id: userId }, updateData);
 
-    // Map role object to role name string for frontend compatibility
+    // Map to camelCase with role as string name
     const updatedUser = {
-      ...updatedUserRaw,
-      role: (updatedUserRaw.role as { name: string } | null)?.name || 'UTILISATEUR',
+      id: updatedUserRaw.id,
+      email: updatedUserRaw.email,
+      name: updatedUserRaw.name,
+      phone: updatedUserRaw.phone,
+      isActive: updatedUserRaw.is_active,
+      isVerified: updatedUserRaw.is_verified,
+      avatar: updatedUserRaw.avatar,
+      createdAt: updatedUserRaw.created_at,
+      updatedAt: updatedUserRaw.updated_at,
+      role: updatedUserRaw.role?.name || 'UTILISATEUR',
     };
 
     // Create audit log
@@ -240,14 +242,12 @@ export async function PATCH(request: Request) {
     if (roleName) details.role = roleName;
     if (isActive !== undefined) details.isActive = isActive;
 
-    await db.auditLog.create({
-      data: {
-        userId: adminUser.id,
-        action: isActive === false ? 'DEACTIVATE_USER' : isActive === true ? 'ACTIVATE_USER' : 'UPDATE_USER_ROLE',
-        resource: 'USER',
-        details: JSON.stringify(details),
-      },
-    });
+    await supabaseAdmin.from('audit_logs').insert(mapUserToDb({
+      userId: adminUser.id,
+      action: isActive === false ? 'DEACTIVATE_USER' : isActive === true ? 'ACTIVATE_USER' : 'UPDATE_USER_ROLE',
+      resource: 'USER',
+      details: JSON.stringify(details),
+    })).select().single();
 
     return NextResponse.json({ user: updatedUser });
   } catch (error) {
@@ -288,9 +288,7 @@ export async function DELETE(request: Request) {
     }
 
     // Check target user exists
-    const targetUser = await db.user.findUnique({
-      where: { id: userId },
-    });
+    const targetUser = await sb.user.findUnique({ id: userId });
 
     if (!targetUser) {
       return NextResponse.json(
@@ -300,19 +298,15 @@ export async function DELETE(request: Request) {
     }
 
     // Delete the user
-    await db.user.delete({
-      where: { id: userId },
-    });
+    await sb.user.delete({ id: userId });
 
     // Create audit log
-    await db.auditLog.create({
-      data: {
-        userId: adminUser.id,
-        action: 'DELETE_USER',
-        resource: 'USER',
-        details: JSON.stringify({ userId, email: targetUser.email, name: targetUser.name }),
-      },
-    });
+    await supabaseAdmin.from('audit_logs').insert(mapUserToDb({
+      userId: adminUser.id,
+      action: 'DELETE_USER',
+      resource: 'USER',
+      details: JSON.stringify({ userId, email: targetUser.email, name: targetUser.name }),
+    })).select().single();
 
     return NextResponse.json({ message: 'User deleted successfully' });
   } catch (error) {

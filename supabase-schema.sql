@@ -1,8 +1,11 @@
--- ==================== WEDS - Week-End School Digital ====================
--- Supabase Database Schema
--- Run this SQL in Supabase SQL Editor
+-- WEDS (Week-End School Digital) - Supabase Database Schema
+-- Run this SQL in the Supabase Dashboard SQL Editor to create all tables
 
--- ==================== ROLES ====================
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- ==================== CORE: USER & AUTH ====================
+
 CREATE TABLE IF NOT EXISTS roles (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   name TEXT UNIQUE NOT NULL,
@@ -10,7 +13,6 @@ CREATE TABLE IF NOT EXISTS roles (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- ==================== USERS ====================
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   email TEXT UNIQUE NOT NULL,
@@ -36,7 +38,8 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- ==================== COURSES ====================
+-- ==================== E-LEARNING ====================
+
 CREATE TABLE IF NOT EXISTS courses (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   title TEXT NOT NULL,
@@ -51,7 +54,6 @@ CREATE TABLE IF NOT EXISTS courses (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- ==================== COURSE MODULES ====================
 CREATE TABLE IF NOT EXISTS course_modules (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   title TEXT NOT NULL,
@@ -61,7 +63,6 @@ CREATE TABLE IF NOT EXISTS course_modules (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- ==================== LESSONS ====================
 CREATE TABLE IF NOT EXISTS lessons (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   title TEXT NOT NULL,
@@ -74,7 +75,6 @@ CREATE TABLE IF NOT EXISTS lessons (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- ==================== QUIZZES ====================
 CREATE TABLE IF NOT EXISTS quizzes (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   title TEXT NOT NULL,
@@ -82,7 +82,6 @@ CREATE TABLE IF NOT EXISTS quizzes (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- ==================== QUIZ QUESTIONS ====================
 CREATE TABLE IF NOT EXISTS quiz_questions (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   question TEXT NOT NULL,
@@ -92,7 +91,6 @@ CREATE TABLE IF NOT EXISTS quiz_questions (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- ==================== QUIZ RESULTS ====================
 CREATE TABLE IF NOT EXISTS quiz_results (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   score INTEGER NOT NULL,
@@ -102,7 +100,6 @@ CREATE TABLE IF NOT EXISTS quiz_results (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- ==================== ENROLLMENTS ====================
 CREATE TABLE IF NOT EXISTS enrollments (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   user_id TEXT NOT NULL REFERENCES users(id),
@@ -114,7 +111,6 @@ CREATE TABLE IF NOT EXISTS enrollments (
   UNIQUE(user_id, course_id)
 );
 
--- ==================== LESSON PROGRESS ====================
 CREATE TABLE IF NOT EXISTS lesson_progress (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   user_id TEXT NOT NULL REFERENCES users(id),
@@ -125,7 +121,6 @@ CREATE TABLE IF NOT EXISTS lesson_progress (
   UNIQUE(user_id, lesson_id)
 );
 
--- ==================== CERTIFICATES ====================
 CREATE TABLE IF NOT EXISTS certificates (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   qr_code TEXT,
@@ -134,7 +129,6 @@ CREATE TABLE IF NOT EXISTS certificates (
   enrollment_id TEXT UNIQUE NOT NULL REFERENCES enrollments(id)
 );
 
--- ==================== BADGES ====================
 CREATE TABLE IF NOT EXISTS badges (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   name TEXT NOT NULL,
@@ -144,7 +138,6 @@ CREATE TABLE IF NOT EXISTS badges (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- ==================== USER BADGES ====================
 CREATE TABLE IF NOT EXISTS user_badges (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   user_id TEXT NOT NULL REFERENCES users(id),
@@ -154,6 +147,7 @@ CREATE TABLE IF NOT EXISTS user_badges (
 );
 
 -- ==================== OPPORTUNITIES ====================
+
 CREATE TABLE IF NOT EXISTS opportunities (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   title TEXT NOT NULL,
@@ -174,7 +168,6 @@ CREATE TABLE IF NOT EXISTS opportunities (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- ==================== APPLICATIONS ====================
 CREATE TABLE IF NOT EXISTS applications (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   user_id TEXT NOT NULL REFERENCES users(id),
@@ -185,7 +178,8 @@ CREATE TABLE IF NOT EXISTS applications (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- ==================== MENTORS ====================
+-- ==================== MENTORSHIP ====================
+
 CREATE TABLE IF NOT EXISTS mentors (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   user_id TEXT UNIQUE NOT NULL REFERENCES users(id),
@@ -194,10 +188,10 @@ CREATE TABLE IF NOT EXISTS mentors (
   experience TEXT,
   rating DOUBLE PRECISION DEFAULT 0,
   accept_requests BOOLEAN DEFAULT true,
-  created_at TIMESTAMPTZ DEFAULT now()
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- ==================== MENTOR REQUESTS ====================
 CREATE TABLE IF NOT EXISTS mentor_requests (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   mentee_id TEXT NOT NULL REFERENCES users(id),
@@ -208,7 +202,8 @@ CREATE TABLE IF NOT EXISTS mentor_requests (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- ==================== COMMUNITY POSTS ====================
+-- ==================== COMMUNITY ====================
+
 CREATE TABLE IF NOT EXISTS community_posts (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   title TEXT NOT NULL,
@@ -220,7 +215,6 @@ CREATE TABLE IF NOT EXISTS community_posts (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- ==================== COMMENTS ====================
 CREATE TABLE IF NOT EXISTS comments (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   content TEXT NOT NULL,
@@ -229,7 +223,6 @@ CREATE TABLE IF NOT EXISTS comments (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- ==================== LIKES ====================
 CREATE TABLE IF NOT EXISTS likes (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   post_id TEXT NOT NULL REFERENCES community_posts(id) ON DELETE CASCADE,
@@ -237,7 +230,6 @@ CREATE TABLE IF NOT EXISTS likes (
   UNIQUE(post_id, user_id)
 );
 
--- ==================== GROUPS ====================
 CREATE TABLE IF NOT EXISTS groups (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   name TEXT NOT NULL,
@@ -247,7 +239,6 @@ CREATE TABLE IF NOT EXISTS groups (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- ==================== GROUP MEMBERS ====================
 CREATE TABLE IF NOT EXISTS group_members (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   user_id TEXT NOT NULL REFERENCES users(id),
@@ -256,7 +247,6 @@ CREATE TABLE IF NOT EXISTS group_members (
   UNIQUE(user_id, group_id)
 );
 
--- ==================== MESSAGES ====================
 CREATE TABLE IF NOT EXISTS messages (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   content TEXT NOT NULL,
@@ -266,7 +256,8 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- ==================== REPORTS ====================
+-- ==================== ALERTS & SOS ====================
+
 CREATE TABLE IF NOT EXISTS reports (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   category TEXT NOT NULL,
@@ -282,7 +273,6 @@ CREATE TABLE IF NOT EXISTS reports (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- ==================== REPORT ATTACHMENTS ====================
 CREATE TABLE IF NOT EXISTS report_attachments (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   url TEXT NOT NULL,
@@ -291,7 +281,6 @@ CREATE TABLE IF NOT EXISTS report_attachments (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- ==================== SOS ALERTS ====================
 CREATE TABLE IF NOT EXISTS sos_alerts (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   user_id TEXT REFERENCES users(id),
@@ -310,8 +299,8 @@ CREATE TABLE IF NOT EXISTS sos_alerts (
   network_status TEXT,
   connection_type TEXT,
   session_id TEXT,
-  assigned_admin_id TEXT,
-  fallback_admin_id TEXT,
+  assigned_admin_id TEXT REFERENCES users(id),
+  fallback_admin_id TEXT REFERENCES users(id),
   call_id TEXT,
   escalation_level INTEGER DEFAULT 0,
   auto_triggered BOOLEAN DEFAULT false,
@@ -321,7 +310,6 @@ CREATE TABLE IF NOT EXISTS sos_alerts (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- ==================== SOS INTERVENTIONS ====================
 CREATE TABLE IF NOT EXISTS sos_interventions (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   alert_id TEXT NOT NULL REFERENCES sos_alerts(id),
@@ -334,7 +322,6 @@ CREATE TABLE IF NOT EXISTS sos_interventions (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- ==================== SOS GPS UPDATES ====================
 CREATE TABLE IF NOT EXISTS sos_gps_updates (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   alert_id TEXT NOT NULL REFERENCES sos_alerts(id) ON DELETE CASCADE,
@@ -342,10 +329,9 @@ CREATE TABLE IF NOT EXISTS sos_gps_updates (
   longitude DOUBLE PRECISION NOT NULL,
   accuracy DOUBLE PRECISION,
   speed DOUBLE PRECISION,
-  timestamp TIMESTAMPTZ DEFAULT now()
+  "timestamp" TIMESTAMPTZ DEFAULT now()
 );
 
--- ==================== SOS CALL LOGS ====================
 CREATE TABLE IF NOT EXISTS sos_call_logs (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   alert_id TEXT NOT NULL REFERENCES sos_alerts(id) ON DELETE CASCADE,
@@ -356,6 +342,7 @@ CREATE TABLE IF NOT EXISTS sos_call_logs (
 );
 
 -- ==================== NOTIFICATIONS ====================
+
 CREATE TABLE IF NOT EXISTS notifications (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   user_id TEXT NOT NULL REFERENCES users(id),
@@ -367,7 +354,8 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- ==================== CHATBOT LOGS ====================
+-- ==================== CHATBOT ====================
+
 CREATE TABLE IF NOT EXISTS chatbot_logs (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   user_id TEXT NOT NULL REFERENCES users(id),
@@ -377,7 +365,8 @@ CREATE TABLE IF NOT EXISTS chatbot_logs (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- ==================== AUDIT LOGS ====================
+-- ==================== ADMIN ====================
+
 CREATE TABLE IF NOT EXISTS audit_logs (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   user_id TEXT,
@@ -387,15 +376,16 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- ==================== SETTINGS ====================
 CREATE TABLE IF NOT EXISTS settings (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   key TEXT UNIQUE NOT NULL,
   value TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now()
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
 );
 
 -- ==================== GEOGRAPHY ====================
+
 CREATE TABLE IF NOT EXISTS regions (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   name TEXT NOT NULL,
@@ -417,76 +407,122 @@ CREATE TABLE IF NOT EXISTS communities (
 );
 
 -- ==================== INDEXES ====================
+
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_role_id ON users(role_id);
+CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active);
+CREATE INDEX IF NOT EXISTS idx_courses_published ON courses(published);
 CREATE INDEX IF NOT EXISTS idx_courses_category ON courses(category);
-CREATE INDEX IF NOT EXISTS idx_enrollments_user ON enrollments(user_id);
-CREATE INDEX IF NOT EXISTS idx_enrollments_course ON enrollments(course_id);
-CREATE INDEX IF NOT EXISTS idx_community_posts_user ON community_posts(user_id);
-CREATE INDEX IF NOT EXISTS idx_sos_alerts_user ON sos_alerts(user_id);
-CREATE INDEX IF NOT EXISTS idx_sos_alerts_status ON sos_alerts(status);
-CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_enrollments_user_id ON enrollments(user_id);
+CREATE INDEX IF NOT EXISTS idx_enrollments_course_id ON enrollments(course_id);
+CREATE INDEX IF NOT EXISTS idx_community_posts_user_id ON community_posts(user_id);
+CREATE INDEX IF NOT EXISTS idx_community_posts_pinned ON community_posts(pinned);
+CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments(post_id);
+CREATE INDEX IF NOT EXISTS idx_likes_post_id ON likes(post_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
+CREATE INDEX IF NOT EXISTS idx_sos_alerts_user_id ON sos_alerts(user_id);
+CREATE INDEX IF NOT EXISTS idx_sos_alerts_status ON sos_alerts(status);
+CREATE INDEX IF NOT EXISTS idx_sos_alerts_assigned_admin ON sos_alerts(assigned_admin_id);
+CREATE INDEX IF NOT EXISTS idx_reports_user_id ON reports(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_messages_sender_id ON messages(sender_id);
+CREATE INDEX IF NOT EXISTS idx_messages_receiver_id ON messages(receiver_id);
 
 -- ==================== ENABLE RLS (Row Level Security) ====================
+-- We use the service role key in the backend, so RLS is bypassed.
+-- But we enable RLS and create policies for direct client access.
+
+ALTER TABLE roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE courses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE course_modules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE lessons ENABLE ROW LEVEL SECURITY;
+ALTER TABLE quizzes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE quiz_questions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE quiz_results ENABLE ROW LEVEL SECURITY;
 ALTER TABLE enrollments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE community_posts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE sos_alerts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
-ALTER TABLE reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE lesson_progress ENABLE ROW LEVEL SECURITY;
+ALTER TABLE certificates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE badges ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_badges ENABLE ROW LEVEL SECURITY;
 ALTER TABLE opportunities ENABLE ROW LEVEL SECURITY;
+ALTER TABLE applications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mentors ENABLE ROW LEVEL SECURITY;
 ALTER TABLE mentor_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE community_posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE likes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE groups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE group_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE report_attachments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sos_alerts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sos_interventions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sos_gps_updates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sos_call_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chatbot_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE regions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE districts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE communities ENABLE ROW LEVEL SECURITY;
 
--- ==================== RLS POLICIES ====================
--- Allow service role full access (backend)
-CREATE POLICY "Service role full access on users" ON users FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on courses" ON courses FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on enrollments" ON enrollments FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on community_posts" ON community_posts FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on sos_alerts" ON sos_alerts FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on notifications" ON notifications FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on reports" ON reports FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on opportunities" ON opportunities FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on mentor_requests" ON mentor_requests FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on roles" ON roles FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on course_modules" ON course_modules FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on lessons" ON lessons FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on quizzes" ON quizzes FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on quiz_questions" ON quiz_questions FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on quiz_results" ON quiz_results FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on lesson_progress" ON lesson_progress FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on certificates" ON certificates FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on badges" ON badges FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on user_badges" ON user_badges FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on applications" ON applications FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on mentors" ON mentors FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on comments" ON comments FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on likes" ON likes FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on groups" ON groups FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on group_members" ON group_members FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on messages" ON messages FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on report_attachments" ON report_attachments FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on sos_interventions" ON sos_interventions FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on sos_gps_updates" ON sos_gps_updates FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on sos_call_logs" ON sos_call_logs FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on chatbot_logs" ON chatbot_logs FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on audit_logs" ON audit_logs FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on settings" ON settings FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on regions" ON regions FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on districts" ON districts FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access on communities" ON communities FOR ALL USING (true) WITH CHECK (true);
+-- Allow public read access to published courses and opportunities
+CREATE POLICY "Published courses are readable by everyone" ON courses FOR SELECT USING (published = true);
+CREATE POLICY "Published opportunities are readable by everyone" ON opportunities FOR SELECT USING (published = true);
+CREATE POLICY "Roles are readable by everyone" ON roles FOR SELECT USING (true);
+CREATE POLICY "Badges are readable by everyone" ON badges FOR SELECT USING (true);
+CREATE POLICY "Groups are readable by everyone" ON groups FOR SELECT USING (true);
+CREATE POLICY "Mentors accepting requests are readable by everyone" ON mentors FOR SELECT USING (accept_requests = true);
+CREATE POLICY "Community posts are readable by everyone" ON community_posts FOR SELECT USING (true);
+CREATE POLICY "Comments are readable by everyone" ON comments FOR SELECT USING (true);
+CREATE POLICY "SOS admins list is public" ON users FOR SELECT USING (is_active = true);
+
+-- Allow anonymous SOS alert creation
+CREATE POLICY "Anyone can create SOS alerts" ON sos_alerts FOR INSERT WITH CHECK (true);
+CREATE POLICY "Anyone can create SOS call logs" ON sos_call_logs FOR INSERT WITH CHECK (true);
+
+-- Users can read their own data
+CREATE POLICY "Users can read own data" ON users FOR SELECT USING (auth.uid()::text = id);
+CREATE POLICY "Users can update own data" ON users FOR UPDATE USING (auth.uid()::text = id);
+CREATE POLICY "Users can read own notifications" ON notifications FOR SELECT USING (auth.uid()::text = user_id);
+CREATE POLICY "Users can update own notifications" ON notifications FOR UPDATE USING (auth.uid()::text = user_id);
+CREATE POLICY "Users can read own enrollments" ON enrollments FOR SELECT USING (auth.uid()::text = user_id);
+CREATE POLICY "Users can read own messages" ON messages FOR SELECT USING (auth.uid()::text IN (sender_id, receiver_id));
+
+-- Auto-update updated_at trigger
+CREATE OR REPLACE FUNCTION update_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER update_courses_updated_at BEFORE UPDATE ON courses FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER update_enrollments_updated_at BEFORE UPDATE ON enrollments FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER update_opportunities_updated_at BEFORE UPDATE ON opportunities FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER update_mentors_updated_at BEFORE UPDATE ON mentors FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER update_mentor_requests_updated_at BEFORE UPDATE ON mentor_requests FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER update_community_posts_updated_at BEFORE UPDATE ON community_posts FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER update_reports_updated_at BEFORE UPDATE ON reports FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER update_sos_alerts_updated_at BEFORE UPDATE ON sos_alerts FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER update_sos_interventions_updated_at BEFORE UPDATE ON sos_interventions FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER update_applications_updated_at BEFORE UPDATE ON applications FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER update_settings_updated_at BEFORE UPDATE ON settings FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- ==================== SEED DATA ====================
--- Roles
-INSERT INTO roles (name, description) VALUES ('SUPER_ADMIN', 'Role: SUPER_ADMIN') ON CONFLICT (name) DO NOTHING;
-INSERT INTO roles (name, description) VALUES ('ADMIN', 'Role: ADMIN') ON CONFLICT (name) DO NOTHING;
-INSERT INTO roles (name, description) VALUES ('MODERATEUR', 'Role: MODERATEUR') ON CONFLICT (name) DO NOTHING;
-INSERT INTO roles (name, description) VALUES ('FORMATEUR', 'Role: FORMATEUR') ON CONFLICT (name) DO NOTHING;
-INSERT INTO roles (name, description) VALUES ('MENTOR', 'Role: MENTOR') ON CONFLICT (name) DO NOTHING;
-INSERT INTO roles (name, description) VALUES ('VOLONTAIRE', 'Role: VOLONTAIRE') ON CONFLICT (name) DO NOTHING;
-INSERT INTO roles (name, description) VALUES ('UTILISATEUR', 'Role: UTILISATEUR') ON CONFLICT (name) DO NOTHING;
-INSERT INTO roles (name, description) VALUES ('INTERVENANT_URGENCE', 'Role: INTERVENANT_URGENCE') ON CONFLICT (name) DO NOTHING;
 
--- NOTE: Admin user will be created via the seed API (password needs bcrypt hashing)
+-- Insert roles
+INSERT INTO roles (name, description) VALUES ('SUPER_ADMIN', 'Super administrateur avec accès complet') ON CONFLICT (name) DO NOTHING;
+INSERT INTO roles (name, description) VALUES ('ADMIN', 'Administrateur de la plateforme') ON CONFLICT (name) DO NOTHING;
+INSERT INTO roles (name, description) VALUES ('MODERATEUR', 'Modérateur de la communauté') ON CONFLICT (name) DO NOTHING;
+INSERT INTO roles (name, description) VALUES ('FORMATEUR', 'Formateur et créateur de cours') ON CONFLICT (name) DO NOTHING;
+INSERT INTO roles (name, description) VALUES ('MENTOR', 'Mentor pour les membres') ON CONFLICT (name) DO NOTHING;
+INSERT INTO roles (name, description) VALUES ('VOLONTAIRE', 'Volontaire communautaire') ON CONFLICT (name) DO NOTHING;
+INSERT INTO roles (name, description) VALUES ('UTILISATEUR', 'Utilisateur par défaut') ON CONFLICT (name) DO NOTHING;
+INSERT INTO roles (name, description) VALUES ('INTERVENANT_URGENCE', 'Intervenant d''urgence SOS') ON CONFLICT (name) DO NOTHING;

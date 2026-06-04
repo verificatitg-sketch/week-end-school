@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseAdmin, sb } from '@/lib/supabase';
 import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
 
 async function getAuthUser(request: Request) {
@@ -7,10 +7,7 @@ async function getAuthUser(request: Request) {
   if (!token) return null;
   const payload = await verifyToken(token);
   if (!payload) return null;
-  const user = await db.user.findUnique({
-    where: { id: payload.userId as string },
-    include: { role: true },
-  });
+  const user = await sb.user.findUnique({ id: payload.userId as string });
   return user;
 }
 
@@ -41,7 +38,12 @@ export async function POST(
       );
     }
 
-    const alert = await db.sosAlert.findUnique({ where: { id } });
+    const { data: alert } = await supabaseAdmin
+      .from('sos_alerts')
+      .select('*')
+      .eq('id', id)
+      .single();
+
     if (!alert) {
       return NextResponse.json(
         { error: 'SOS alert not found' },
@@ -52,30 +54,32 @@ export async function POST(
     const body = await request.json();
     const { status, notes } = body;
 
-    const intervention = await db.sosIntervention.create({
-      data: {
-        alertId: id,
-        responderId: user.id,
+    const { data: intervention, error } = await supabaseAdmin
+      .from('sos_interventions')
+      .insert({
+        alert_id: id,
+        responder_id: user.id,
         status: status || 'dispatched',
         notes: notes || null,
-      },
-    });
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
 
     // Update alert status
-    await db.sosAlert.update({
-      where: { id },
-      data: { status: 'in_progress' },
-    });
+    await supabaseAdmin
+      .from('sos_alerts')
+      .update({ status: 'in_progress' })
+      .eq('id', id);
 
     // Notify the alert creator (if not anonymous)
-    if (alert.userId) {
-      await db.notification.create({
-        data: {
-          userId: alert.userId,
-          title: 'Intervention en cours',
-          message: `${user.name} intervient sur votre alerte SOS`,
-          type: 'sos',
-        },
+    if (alert.user_id) {
+      await supabaseAdmin.from('notifications').insert({
+        user_id: alert.user_id,
+        title: 'Intervention en cours',
+        message: `${user.name} intervient sur votre alerte SOS`,
+        type: 'sos',
       });
     }
 

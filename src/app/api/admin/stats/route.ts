@@ -1,6 +1,29 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseAdmin, sb } from '@/lib/supabase';
 import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
+
+/**
+ * Convert snake_case string to camelCase
+ */
+function snakeToCamel(str: string): string {
+  return str.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+}
+
+/**
+ * Recursively map object keys from snake_case to camelCase
+ */
+function mapToCamelCase(obj: unknown): unknown {
+  if (obj === null || obj === undefined) return obj;
+  if (Array.isArray(obj)) return obj.map(mapToCamelCase);
+  if (typeof obj === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+      result[snakeToCamel(key)] = mapToCamelCase(value);
+    }
+    return result;
+  }
+  return obj;
+}
 
 export async function GET(request: Request) {
   try {
@@ -20,10 +43,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const user = await db.user.findUnique({
-      where: { id: payload.userId as string },
-      include: { role: true },
-    });
+    const user = await sb.user.findUnique({ id: payload.userId as string });
 
     if (!user) {
       return NextResponse.json(
@@ -41,91 +61,90 @@ export async function GET(request: Request) {
       );
     }
 
-    // Get counts
+    // Get counts in parallel
     const [
-      users,
-      courses,
-      enrollments,
-      opportunities,
-      sosAlerts,
-      reports,
-      certificates,
-      mentors,
-      communityPosts,
+      usersCount,
+      coursesCount,
+      enrollmentsCount,
+      opportunitiesCount,
+      sosAlertsCount,
+      reportsCount,
+      certificatesCount,
+      mentorsCount,
+      communityPostsCount,
     ] = await Promise.all([
-      db.user.count(),
-      db.course.count(),
-      db.enrollment.count(),
-      db.opportunity.count(),
-      db.sosAlert.count(),
-      db.report.count(),
-      db.certificate.count(),
-      db.mentor.count(),
-      db.communityPost.count(),
+      supabaseAdmin.from('users').select('*', { count: 'exact', head: true }),
+      supabaseAdmin.from('courses').select('*', { count: 'exact', head: true }),
+      supabaseAdmin.from('enrollments').select('*', { count: 'exact', head: true }),
+      supabaseAdmin.from('opportunities').select('*', { count: 'exact', head: true }),
+      supabaseAdmin.from('sos_alerts').select('*', { count: 'exact', head: true }),
+      supabaseAdmin.from('reports').select('*', { count: 'exact', head: true }),
+      supabaseAdmin.from('certificates').select('*', { count: 'exact', head: true }),
+      supabaseAdmin.from('mentors').select('*', { count: 'exact', head: true }),
+      supabaseAdmin.from('community_posts').select('*', { count: 'exact', head: true }),
     ]);
 
-    // Get recent activity
-    const recentUsers = await db.user.findMany({
-      take: 5,
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, name: true, email: true, createdAt: true },
-    });
-
-    const recentEnrollments = await db.enrollment.findMany({
-      take: 5,
-      orderBy: { enrolledAt: 'desc' },
-      include: {
-        user: { select: { name: true } },
-        course: { select: { title: true } },
-      },
-    });
-
-    const recentSosAlerts = await db.sosAlert.findMany({
-      take: 5,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        user: { select: { name: true } },
-      },
-    });
+    // Get recent activity in parallel
+    const [
+      recentUsersResult,
+      recentEnrollmentsResult,
+      recentSosAlertsResult,
+    ] = await Promise.all([
+      supabaseAdmin
+        .from('users')
+        .select('id, name, email, created_at')
+        .order('created_at', { ascending: false })
+        .limit(5),
+      supabaseAdmin
+        .from('enrollments')
+        .select('*, user:users(name), course:courses(title)')
+        .order('enrolled_at', { ascending: false })
+        .limit(5),
+      supabaseAdmin
+        .from('sos_alerts')
+        .select('*, user:users(name)')
+        .order('created_at', { ascending: false })
+        .limit(5),
+    ]);
 
     // Get user role distribution
-    const allRoles = await db.user.findMany({
-      select: { role: { select: { name: true } } },
-    });
+    const { data: allRolesRaw } = await supabaseAdmin
+      .from('users')
+      .select('role:roles(name)');
 
     const roleDistribution: Record<string, number> = {};
-    for (const u of allRoles) {
-      const roleName = u.role?.name || 'NO_ROLE';
+    for (const u of (allRolesRaw || [])) {
+      const roleName = (u.role as { name: string } | null)?.name || 'NO_ROLE';
       roleDistribution[roleName] = (roleDistribution[roleName] || 0) + 1;
     }
 
     // Get SOS alert status distribution
-    const allSosAlerts = await db.sosAlert.findMany({
-      select: { status: true },
-    });
+    const { data: allSosAlertsRaw } = await supabaseAdmin
+      .from('sos_alerts')
+      .select('status');
 
     const sosStatusDistribution: Record<string, number> = {};
-    for (const a of allSosAlerts) {
+    for (const a of (allSosAlertsRaw || [])) {
       sosStatusDistribution[a.status] =
         (sosStatusDistribution[a.status] || 0) + 1;
     }
 
     return NextResponse.json({
       stats: {
-        users,
-        courses,
-        enrollments,
-        opportunities,
-        sosAlerts,
-        reports,
-        certificates,
-        mentors,
-        communityPosts,
+        users: usersCount.count || 0,
+        courses: coursesCount.count || 0,
+        enrollments: enrollmentsCount.count || 0,
+        opportunities: opportunitiesCount.count || 0,
+        sosAlerts: sosAlertsCount.count || 0,
+        reports: reportsCount.count || 0,
+        certificates: certificatesCount.count || 0,
+        mentors: mentorsCount.count || 0,
+        communityPosts: communityPostsCount.count || 0,
       },
       recentActivity: {
-        users: recentUsers,
-        enrollments: recentEnrollments,
-        sosAlerts: recentSosAlerts,
+        users: (recentUsersResult.data || []).map((u: unknown) => mapToCamelCase(u)),
+        enrollments: (recentEnrollmentsResult.data || []).map((e: unknown) => mapToCamelCase(e)),
+        sosAlerts: (recentSosAlertsResult.data || []).map((a: unknown) => mapToCamelCase(a)),
       },
       distributions: {
         roles: roleDistribution,

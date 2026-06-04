@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseAdmin, sb } from '@/lib/supabase';
 import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
 
 async function getAuthUser(request: Request) {
@@ -7,9 +7,7 @@ async function getAuthUser(request: Request) {
   if (!token) return null;
   const payload = await verifyToken(token);
   if (!payload) return null;
-  const user = await db.user.findUnique({
-    where: { id: payload.userId as string },
-  });
+  const user = await sb.user.findUnique({ id: payload.userId as string });
   return user;
 }
 
@@ -20,7 +18,13 @@ export async function GET(
   try {
     const { id } = await params;
 
-    const post = await db.communityPost.findUnique({ where: { id } });
+    // Check post exists
+    const { data: post } = await supabaseAdmin
+      .from('community_posts')
+      .select('id')
+      .eq('id', id)
+      .single();
+
     if (!post) {
       return NextResponse.json(
         { error: 'Post not found' },
@@ -28,21 +32,24 @@ export async function GET(
       );
     }
 
-    const comments = await db.comment.findMany({
-      where: { postId: id },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            avatar: true,
-          },
-        },
-      },
-      orderBy: { createdAt: 'asc' },
-    });
+    const { data: comments, error } = await supabaseAdmin
+      .from('comments')
+      .select('*, user:users(id, name, avatar)')
+      .eq('post_id', id)
+      .order('created_at', { ascending: true });
 
-    return NextResponse.json({ comments });
+    if (error) throw error;
+
+    const mapped = (comments || []).map((c: any) => ({
+      id: c.id,
+      content: c.content,
+      postId: c.post_id,
+      userId: c.user_id,
+      createdAt: c.created_at,
+      user: c.user,
+    }));
+
+    return NextResponse.json({ comments: mapped });
   } catch (error) {
     console.error('Get comments error:', error);
     return NextResponse.json(
@@ -76,7 +83,13 @@ export async function POST(
       );
     }
 
-    const post = await db.communityPost.findUnique({ where: { id } });
+    // Check post exists
+    const { data: post } = await supabaseAdmin
+      .from('community_posts')
+      .select('user_id')
+      .eq('id', id)
+      .single();
+
     if (!post) {
       return NextResponse.json(
         { error: 'Post not found' },
@@ -84,33 +97,26 @@ export async function POST(
       );
     }
 
-    const comment = await db.comment.create({
-      data: {
+    const { data: comment, error } = await supabaseAdmin
+      .from('comments')
+      .insert({
         content,
-        postId: id,
-        userId: user.id,
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            avatar: true,
-          },
-        },
-      },
-    });
+        post_id: id,
+        user_id: user.id,
+      })
+      .select('*, user:users(id, name, avatar)')
+      .single();
+
+    if (error) throw error;
 
     // Notify the post author
-    if (post.userId !== user.id) {
-      await db.notification.create({
-        data: {
-          userId: post.userId,
-          title: 'Nouveau commentaire',
-          message: `${user.name} a commenté votre publication`,
-          type: 'community',
-          link: `/community/${id}`,
-        },
+    if (post.user_id !== user.id) {
+      await supabaseAdmin.from('notifications').insert({
+        user_id: post.user_id,
+        title: 'Nouveau commentaire',
+        message: `${user.name} a commenté votre publication`,
+        type: 'community',
+        link: `/community/${id}`,
       });
     }
 

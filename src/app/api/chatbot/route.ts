@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseAdmin } from '@/lib/supabase';
 import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
 import ZAI from 'z-ai-web-dev-sdk';
 
@@ -86,13 +86,11 @@ export async function POST(request: Request) {
 
     // Log the conversation if user is authenticated
     if (userId) {
-      await db.chatbotLog.create({
-        data: {
-          userId,
-          message,
-          response: aiResponse,
-          language,
-        },
+      await supabaseAdmin.from('chatbot_logs').insert({
+        user_id: userId,
+        message,
+        response: aiResponse,
+        language,
       });
     }
 

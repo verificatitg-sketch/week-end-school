@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { sb, mapUserToApi, mapUserToDb } from '@/lib/supabase';
 import { hashPassword, createToken } from '@/lib/auth';
 
 export async function POST(request: Request) {
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     }
 
     // Check if user already exists
-    const existingUser = await db.user.findUnique({ where: { email } });
+    const existingUser = await sb.user.findUnique({ email });
     if (existingUser) {
       return NextResponse.json(
         { error: 'Email already registered' },
@@ -24,17 +24,18 @@ export async function POST(request: Request) {
     }
 
     // Find default role
-    let role = await db.role.findUnique({ where: { name: 'UTILISATEUR' } });
+    let role = await sb.role.findUnique({ name: 'UTILISATEUR' });
     if (!role) {
-      role = await db.role.create({
-        data: { name: 'UTILISATEUR', description: 'Default user role' },
+      role = await sb.role.create({
+        name: 'UTILISATEUR',
+        description: 'Default user role',
       });
     }
 
     const hashedPassword = await hashPassword(password);
 
-    const user = await db.user.create({
-      data: {
+    const user = await sb.user.create(
+      mapUserToDb({
         email,
         name,
         password: hashedPassword,
@@ -43,9 +44,8 @@ export async function POST(request: Request) {
         disability: disability || null,
         location: location || null,
         roleId: role.id,
-      },
-      include: { role: true },
-    });
+      })
+    );
 
     const token = await createToken({
       userId: user.id,
@@ -53,13 +53,13 @@ export async function POST(request: Request) {
       role: user.role?.name,
     });
 
-    const { password: _, ...userWithoutPassword } = user;
+    const { password: _, ...mappedUser } = mapUserToApi(user)!;
 
     return NextResponse.json(
       {
         message: 'Registration successful',
         token,
-        user: userWithoutPassword,
+        user: mappedUser,
       },
       { status: 201 }
     );

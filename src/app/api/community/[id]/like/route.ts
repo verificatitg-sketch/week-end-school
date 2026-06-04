@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseAdmin, sb } from '@/lib/supabase';
 import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
 
 async function getAuthUser(request: Request) {
@@ -7,9 +7,7 @@ async function getAuthUser(request: Request) {
   if (!token) return null;
   const payload = await verifyToken(token);
   if (!payload) return null;
-  const user = await db.user.findUnique({
-    where: { id: payload.userId as string },
-  });
+  const user = await sb.user.findUnique({ id: payload.userId as string });
   return user;
 }
 
@@ -27,7 +25,13 @@ export async function POST(
       );
     }
 
-    const post = await db.communityPost.findUnique({ where: { id } });
+    // Check post exists
+    const { data: post } = await supabaseAdmin
+      .from('community_posts')
+      .select('user_id')
+      .eq('id', id)
+      .single();
+
     if (!post) {
       return NextResponse.json(
         { error: 'Post not found' },
@@ -36,37 +40,35 @@ export async function POST(
     }
 
     // Check if already liked
-    const existingLike = await db.like.findUnique({
-      where: {
-        postId_userId: { postId: id, userId: user.id },
-      },
-    });
+    const { data: existingLike } = await supabaseAdmin
+      .from('likes')
+      .select('id')
+      .eq('post_id', id)
+      .eq('user_id', user.id)
+      .single();
 
     if (existingLike) {
       // Unlike
-      await db.like.delete({
-        where: { id: existingLike.id },
-      });
+      await supabaseAdmin
+        .from('likes')
+        .delete()
+        .eq('id', existingLike.id);
       return NextResponse.json({ liked: false });
     } else {
       // Like
-      await db.like.create({
-        data: {
-          postId: id,
-          userId: user.id,
-        },
+      await supabaseAdmin.from('likes').insert({
+        post_id: id,
+        user_id: user.id,
       });
 
       // Notify post author
-      if (post.userId !== user.id) {
-        await db.notification.create({
-          data: {
-            userId: post.userId,
-            title: 'Nouveau like',
-            message: `${user.name} a aimé votre publication`,
-            type: 'community',
-            link: `/community/${id}`,
-          },
+      if (post.user_id !== user.id) {
+        await supabaseAdmin.from('notifications').insert({
+          user_id: post.user_id,
+          title: 'Nouveau like',
+          message: `${user.name} a aimé votre publication`,
+          type: 'community',
+          link: `/community/${id}`,
         });
       }
 

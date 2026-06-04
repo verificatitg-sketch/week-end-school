@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseAdmin, sb } from '@/lib/supabase';
 import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
 
 async function getAuthUser(request: Request) {
@@ -7,10 +7,7 @@ async function getAuthUser(request: Request) {
   if (!token) return null;
   const payload = await verifyToken(token);
   if (!payload) return null;
-  const user = await db.user.findUnique({
-    where: { id: payload.userId as string },
-    include: { role: true },
-  });
+  const user = await sb.user.findUnique({ id: payload.userId as string });
   return user;
 }
 
@@ -38,20 +35,41 @@ export async function GET(request: Request) {
       );
     }
 
-    const enrollments = await db.enrollment.findMany({
-      where: { userId: targetUserId },
-      include: {
-        course: {
-          include: {
-            _count: { select: { modules: true } },
-          },
-        },
-        certificate: true,
-      },
-      orderBy: { enrolledAt: 'desc' },
-    });
+    const { data: enrollments, error } = await supabaseAdmin
+      .from('enrollments')
+      .select('*, course:courses(*, modules:course_modules(count)), certificate:certificates(*)')
+      .eq('user_id', targetUserId)
+      .order('enrolled_at', { ascending: false });
 
-    return NextResponse.json({ enrollments });
+    if (error) throw error;
+
+    // Map to camelCase
+    const mapped = (enrollments || []).map((e: any) => ({
+      id: e.id,
+      userId: e.user_id,
+      courseId: e.course_id,
+      progress: e.progress,
+      completed: e.completed,
+      enrolledAt: e.enrolled_at,
+      updatedAt: e.updated_at,
+      course: e.course ? {
+        ...e.course,
+        createdAt: e.course.created_at,
+        updatedAt: e.course.updated_at,
+        _count: {
+          modules: e.course.modules?.[0]?.count || 0,
+        },
+      } : null,
+      certificate: e.certificate && e.certificate.length > 0 ? {
+        ...e.certificate[0],
+        qrCode: e.certificate[0]?.qr_code,
+        issuedAt: e.certificate[0]?.issued_at,
+        userId: e.certificate[0]?.user_id,
+        enrollmentId: e.certificate[0]?.enrollment_id,
+      } : null,
+    }));
+
+    return NextResponse.json({ enrollments: mapped });
   } catch (error) {
     console.error('Get enrollments error:', error);
     return NextResponse.json(
@@ -82,8 +100,13 @@ export async function POST(request: Request) {
     }
 
     // Check course exists and is published
-    const course = await db.course.findUnique({ where: { id: courseId } });
-    if (!course) {
+    const { data: course, error: courseError } = await supabaseAdmin
+      .from('courses')
+      .select('*')
+      .eq('id', courseId)
+      .single();
+
+    if (courseError || !course) {
       return NextResponse.json(
         { error: 'Course not found' },
         { status: 404 }
@@ -98,11 +121,12 @@ export async function POST(request: Request) {
     }
 
     // Check if already enrolled
-    const existing = await db.enrollment.findUnique({
-      where: {
-        userId_courseId: { userId: user.id, courseId },
-      },
-    });
+    const { data: existing } = await supabaseAdmin
+      .from('enrollments')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('course_id', courseId)
+      .single();
 
     if (existing) {
       return NextResponse.json(
@@ -111,25 +135,38 @@ export async function POST(request: Request) {
       );
     }
 
-    const enrollment = await db.enrollment.create({
-      data: {
-        userId: user.id,
-        courseId,
-      },
-      include: { course: true },
-    });
+    const { data: enrollment, error: enrollError } = await supabaseAdmin
+      .from('enrollments')
+      .insert({
+        user_id: user.id,
+        course_id: courseId,
+      })
+      .select('*, course:courses(*)')
+      .single();
+
+    if (enrollError) throw enrollError;
 
     // Create notification
-    await db.notification.create({
-      data: {
-        userId: user.id,
-        title: 'Inscription réussie',
-        message: `Vous êtes inscrit au cours "${course.title}"`,
-        type: 'enrollment',
-      },
+    await supabaseAdmin.from('notifications').insert({
+      user_id: user.id,
+      title: 'Inscription réussie',
+      message: `Vous êtes inscrit au cours "${course.title}"`,
+      type: 'enrollment',
     });
 
-    return NextResponse.json({ enrollment }, { status: 201 });
+    // Map response
+    const mapped = {
+      id: enrollment.id,
+      userId: enrollment.user_id,
+      courseId: enrollment.course_id,
+      progress: enrollment.progress,
+      completed: enrollment.completed,
+      enrolledAt: enrollment.enrolled_at,
+      updatedAt: enrollment.updated_at,
+      course: enrollment.course,
+    };
+
+    return NextResponse.json({ enrollment: mapped }, { status: 201 });
   } catch (error) {
     console.error('Enrollment error:', error);
     return NextResponse.json(
