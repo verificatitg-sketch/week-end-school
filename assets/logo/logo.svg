@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" xml:space="preserve">
+  <!-- White background -->
+  <rect width="512" height="512" fill="#FFFFFF" rx="0"/>
+  
+  <!-- Week-end (cursive red) -->
+  <text x="256" y="200" text-anchor="middle" fill="#E63946" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-size="108" font-weight="bold" letter-spacing="-2">Week-end</text>
+  
+  <!-- Hands icon (circle with hands) -->
+  <circle cx="256" cy="270" r="40" fill="#FFFFFF" stroke="#1D71B8" stroke-width="3"/>
+  <!-- Left hand (palm up) -->
+  <g transform="translate(232, 270) scale(0.8)">
+    <path d="M0,10 Q2,-5 8,-8 Q12,-10 15,-5 Q18,0 20,5 L20,15 Q18,18 15,18 L5,18 Q0,18 0,13 Z" fill="#000000" opacity="0.9"/>
+  </g>
+  <!-- Right hand (palm down) -->
+  <g transform="translate(260, 260) scale(0.8)">
+    <path d="M0,5 Q2,-2 8,-5 Q12,-7 15,-2 Q18,3 20,8 L20,18 Q18,20 15,20 L5,20 Q0,20 0,15 Z" fill="#000000" opacity="0.9" transform="rotate(180, 10, 10)"/>
+  </g>
+  
+  <!-- SCHOOL (block blue) -->
+  <text x="256" y="350" text-anchor="middle" fill="#1D71B8" font-family="Arial, Helvetica, sans-serif" font-size="100" font-weight="bold" letter-spacing="8">SCHOOL</text>
+</svg>

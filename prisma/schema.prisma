@@ -1,0 +1,581 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== CORE: USER & AUTH ====================
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String
+  password      String
+  phone         String?
+  avatar        String?
+  bio           String?
+  dateOfBirth   String?
+  gender        String?
+  disability    String?
+  location      String?
+  latitude      Float?
+  longitude     Float?
+  roleId        String?
+  isActive      Boolean  @default(true)
+  isVerified    Boolean  @default(false)
+  language      String   @default("fr")
+  fontSize      String   @default("normal")
+  highContrast  Boolean  @default(false)
+  screenReader  Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  role                Role?             @relation(fields: [roleId], references: [id])
+  enrollments         Enrollment[]
+  lessonProgress      LessonProgress[]
+  quizResults         QuizResult[]
+  certificates        Certificate[]
+  badges              UserBadge[]
+  applications        Application[]
+  mentorProfile       Mentor?
+  mentorRequestsSent  MentorRequest[]   @relation("MentorRequestsFrom")
+  posts               CommunityPost[]
+  comments            Comment[]
+  likes               Like[]
+  messagesSent        Message[]         @relation("MessagesFrom")
+  messagesRecv        Message[]         @relation("MessagesTo")
+  reports             Report[]
+  sosAlerts           SosAlert[]
+  interventions       SosIntervention[]
+  notifications       Notification[]
+  chatbotLogs         ChatbotLog[]
+  groupMemberships    GroupMember[]
+
+  @@map("users")
+}
+
+model Role {
+  id          String @id @default(cuid())
+  name        String @unique
+  description String?
+
+  users       User[]
+
+  @@map("roles")
+}
+
+// ==================== E-LEARNING ====================
+
+model Course {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  category    String
+  level       String   @default("beginner")
+  thumbnail   String?
+  duration    Int      @default(0)
+  rating      Float    @default(0)
+  published   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  modules     CourseModule[]
+  enrollments Enrollment[]
+
+  @@map("courses")
+}
+
+model CourseModule {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  order       Int      @default(0)
+  courseId     String
+
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons     Lesson[]
+
+  @@map("course_modules")
+}
+
+model Lesson {
+  id         String   @id @default(cuid())
+  title      String
+  content    String?
+  videoUrl   String?
+  audioUrl   String?
+  pdfUrl     String?
+  order      Int      @default(0)
+  moduleId   String
+
+  module     CourseModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  progress   LessonProgress[]
+  quiz       Quiz?
+
+  @@map("lessons")
+}
+
+model Quiz {
+  id        String @id @default(cuid())
+  title     String
+  lessonId  String @unique
+
+  lesson    Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  questions QuizQuestion[]
+  results   QuizResult[]
+
+  @@map("quizzes")
+}
+
+model QuizQuestion {
+  id        String @id @default(cuid())
+  question  String
+  options   String
+  answer    Int
+  quizId    String
+
+  quiz      Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@map("quiz_questions")
+}
+
+model QuizResult {
+  id        String   @id @default(cuid())
+  score     Int
+  total     Int
+  userId    String
+  quizId    String
+  createdAt DateTime @default(now())
+
+  user      User @relation(fields: [userId], references: [id])
+  quiz      Quiz @relation(fields: [quizId], references: [id])
+
+  @@map("quiz_results")
+}
+
+model Enrollment {
+  id          String   @id @default(cuid())
+  userId      String
+  courseId    String
+  progress    Float    @default(0)
+  completed   Boolean  @default(false)
+  enrolledAt  DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id])
+  course      Course   @relation(fields: [courseId], references: [id])
+  certificate Certificate?
+
+  @@unique([userId, courseId])
+  @@map("enrollments")
+}
+
+model LessonProgress {
+  id         String   @id @default(cuid())
+  userId     String
+  lessonId   String
+  completed  Boolean  @default(false)
+  timeSpent  Int      @default(0)
+  updatedAt  DateTime @updatedAt
+
+  user       User     @relation(fields: [userId], references: [id])
+  lesson     Lesson   @relation(fields: [lessonId], references: [id])
+
+  @@unique([userId, lessonId])
+  @@map("lesson_progress")
+}
+
+model Certificate {
+  id           String   @id @default(cuid())
+  qrCode       String?
+  issuedAt     DateTime @default(now())
+  userId       String
+  enrollmentId String   @unique
+
+  user         User        @relation(fields: [userId], references: [id])
+  enrollment   Enrollment  @relation(fields: [enrollmentId], references: [id])
+
+  @@map("certificates")
+}
+
+model Badge {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  icon        String?
+  category    String?
+
+  users       UserBadge[]
+
+  @@map("badges")
+}
+
+model UserBadge {
+  id        String   @id @default(cuid())
+  userId    String
+  badgeId   String
+  earnedAt  DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id])
+  badge     Badge    @relation(fields: [badgeId], references: [id])
+
+  @@unique([userId, badgeId])
+  @@map("user_badges")
+}
+
+// ==================== OPPORTUNITIES ====================
+
+model Opportunity {
+  id           String   @id @default(cuid())
+  title        String
+  description  String
+  type         String
+  organization String?
+  location     String?
+  latitude     Float?
+  longitude    Float?
+  deadline     String?
+  salary       String?
+  requirements String?
+  contactEmail String?
+  contactPhone String?
+  url          String?
+  published    Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  applications Application[]
+
+  @@map("opportunities")
+}
+
+model Application {
+  id            String   @id @default(cuid())
+  userId        String
+  opportunityId String
+  status        String   @default("pending")
+  coverLetter   String?
+  appliedAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User         @relation(fields: [userId], references: [id])
+  opportunity   Opportunity  @relation(fields: [opportunityId], references: [id])
+
+  @@map("applications")
+}
+
+// ==================== MENTORSHIP ====================
+
+model Mentor {
+  id             String  @id @default(cuid())
+  userId         String  @unique
+  expertise      String
+  availability   String
+  experience     String?
+  rating         Float   @default(0)
+  acceptRequests Boolean @default(true)
+
+  user           User            @relation(fields: [userId], references: [id])
+  mentorRequests MentorRequest[]
+
+  @@map("mentors")
+}
+
+model MentorRequest {
+  id        String   @id @default(cuid())
+  menteeId  String
+  mentorId  String
+  message   String?
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  mentee    User     @relation("MentorRequestsFrom", fields: [menteeId], references: [id])
+  mentor    Mentor   @relation(fields: [mentorId], references: [id])
+
+  @@map("mentor_requests")
+}
+
+// ==================== COMMUNITY ====================
+
+model CommunityPost {
+  id        String   @id @default(cuid())
+  title     String
+  content   String
+  category  String   @default("general")
+  userId    String
+  pinned    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User      @relation(fields: [userId], references: [id])
+  comments  Comment[]
+  likes     Like[]
+
+  @@map("community_posts")
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  content   String
+  postId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  post      CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User          @relation(fields: [userId], references: [id])
+
+  @@map("comments")
+}
+
+model Like {
+  id     String @id @default(cuid())
+  postId String
+  userId String
+
+  post   CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user   User          @relation(fields: [userId], references: [id])
+
+  @@unique([postId, userId])
+  @@map("likes")
+}
+
+model Group {
+  id          String @id @default(cuid())
+  name        String
+  description String?
+  category    String?
+  icon        String?
+
+  members     GroupMember[]
+
+  @@map("groups")
+}
+
+model GroupMember {
+  id      String @id @default(cuid())
+  userId  String
+  groupId String
+  role    String @default("member")
+
+  user    User   @relation(fields: [userId], references: [id])
+  group   Group  @relation(fields: [groupId], references: [id])
+
+  @@unique([userId, groupId])
+  @@map("group_members")
+}
+
+model Message {
+  id         String   @id @default(cuid())
+  content    String
+  senderId   String
+  receiverId String
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  sender     User     @relation("MessagesFrom", fields: [senderId], references: [id])
+  receiver   User     @relation("MessagesTo", fields: [receiverId], references: [id])
+
+  @@map("messages")
+}
+
+// ==================== ALERTS & SOS ====================
+
+model Report {
+  id          String   @id @default(cuid())
+  category    String
+  description String
+  location    String?
+  latitude    Float?
+  longitude   Float?
+  anonymous   Boolean  @default(false)
+  status      String   @default("pending")
+  severity    String   @default("medium")
+  userId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User              @relation(fields: [userId], references: [id])
+  attachments ReportAttachment[]
+
+  @@map("reports")
+}
+
+model ReportAttachment {
+  id       String @id @default(cuid())
+  url      String
+  type     String
+  reportId String
+
+  report   Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@map("report_attachments")
+}
+
+model SosAlert {
+  id              String   @id @default(cuid())
+  userId          String?
+  latitude        Float?
+  longitude       Float?
+  address         String?   // Reverse geocoded address
+  urgencyLevel    String   @default("high")
+  status          String   @default("received")
+  silentMode      Boolean  @default(false)
+  description     String?
+  callerPhone     String?
+  callerName      String?
+  isAnonymous     Boolean  @default(false)
+  batteryLevel    Float?    // Device battery level (0-1)
+  isCharging      Boolean?  // Is device charging
+  networkStatus   String?   // online / offline / weak
+  connectionType  String?   // wifi / cellular / unknown
+  sessionId       String?   // Browser session ID for anonymous
+  assignedAdminId String?   // Primary assigned operator
+  fallbackAdminId String?   // Fallback operator
+  callId          String?   // WebSocket call ID
+  escalationLevel Int      @default(0)  // 0=normal, 1=escalated, 2=external
+  autoTriggered   Boolean  @default(false) // Was auto-triggered by countdown
+  offlineStored   Boolean  @default(false) // Was stored offline first
+  syncedAt        DateTime? // When offline alert was synced
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user          User?             @relation(fields: [userId], references: [id])
+  interventions SosIntervention[]
+  gpsUpdates    SosGpsUpdate[]
+  callLogs      SosCallLog[]
+
+  @@map("sos_alerts")
+}
+
+model SosIntervention {
+  id          String   @id @default(cuid())
+  alertId     String
+  responderId String
+  status      String   @default("dispatched")
+  role        String   @default("primary")  // primary / fallback
+  notes       String?
+  respondedAt DateTime?  // When operator responded
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  alert     SosAlert @relation(fields: [alertId], references: [id])
+  responder User     @relation(fields: [responderId], references: [id])
+
+  @@map("sos_interventions")
+}
+
+model SosGpsUpdate {
+  id        String   @id @default(cuid())
+  alertId   String
+  latitude  Float
+  longitude Float
+  accuracy  Float?   // GPS accuracy in meters
+  speed     Float?   // Speed in m/s
+  timestamp DateTime @default(now())
+
+  alert SosAlert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+
+  @@map("sos_gps_updates")
+}
+
+model SosCallLog {
+  id        String   @id @default(cuid())
+  alertId   String
+  action    String   // call_started, operator_assigned, accepted, rejected, escalated, timeout, ended, gps_update, webrtc_offer, webrtc_answer, offline_call
+  actorId   String?  // Who performed the action
+  details   String?  // JSON string with action details
+  createdAt DateTime @default(now())
+
+  alert SosAlert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+
+  @@map("sos_call_logs")
+}
+
+// ==================== NOTIFICATIONS ====================
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  type      String
+  read      Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
+}
+
+// ==================== CHATBOT ====================
+
+model ChatbotLog {
+  id        String   @id @default(cuid())
+  userId    String
+  message   String
+  response  String
+  language  String   @default("fr")
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("chatbot_logs")
+}
+
+// ==================== ADMIN ====================
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  resource  String
+  details   String?
+  createdAt DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+model Setting {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
+
+  @@map("settings")
+}
+
+// ==================== GEOGRAPHY ====================
+
+model Region {
+  id   String @id @default(cuid())
+  name String
+
+  districts District[]
+
+  @@map("regions")
+}
+
+model District {
+  id       String @id @default(cuid())
+  name     String
+  regionId String
+
+  region      Region      @relation(fields: [regionId], references: [id])
+  communities CommunityGeo[]
+
+  @@map("districts")
+}
+
+model CommunityGeo {
+  id         String @id @default(cuid())
+  name       String
+  districtId String
+
+  district   District @relation(fields: [districtId], references: [id])
+
+  @@map("communities")
+}
