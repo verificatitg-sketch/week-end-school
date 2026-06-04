@@ -572,7 +572,7 @@ export default function WEDSApp() {
   React.useEffect(() => {
     initialize();
     useAppStore.getState()._hydrateLanguage();
-    setMounted(true);
+    queueMicrotask(() => setMounted(true));
   }, [initialize]);
 
   React.useEffect(() => {

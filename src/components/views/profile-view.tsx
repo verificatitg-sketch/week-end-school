@@ -86,12 +86,12 @@ export function ProfileView() {
 
   useEffect(() => {
     if (user) {
-      setForm({
+      queueMicrotask(() => setForm({
         name: user.name || '',
         email: user.email || '',
         phone: '',
         location: '',
-      });
+      }));
     }
   }, [user]);
 
