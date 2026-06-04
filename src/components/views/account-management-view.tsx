@@ -55,6 +55,9 @@ import {
   AlertTriangle,
   Mail,
   CalendarDays,
+  KeyRound,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 // ==================== TYPES ====================
@@ -169,10 +172,18 @@ export function AccountManagementView() {
   const [deleteDialogUser, setDeleteDialogUser] = useState<UserRow | null>(null);
   const [deleteSaving, setDeleteSaving] = useState(false);
 
+  const [resetPwdDialogOpen, setResetPwdDialogOpen] = useState(false);
+  const [resetPwdDialogUser, setResetPwdDialogUser] = useState<UserRow | null>(null);
+  const [resetPwdNewPassword, setResetPwdNewPassword] = useState('');
+  const [resetPwdConfirmPassword, setResetPwdConfirmPassword] = useState('');
+  const [resetPwdSaving, setResetPwdSaving] = useState(false);
+  const [resetPwdShowPassword, setResetPwdShowPassword] = useState(false);
+
   const [toggleSavingId, setToggleSavingId] = useState<string | null>(null);
 
   // Derived
   const isCurrentUserSuperAdmin = isSuperAdmin(currentUser?.role);
+  const isCurrentUserAdmin = isCurrentUserSuperAdmin || getRoleName(currentUser?.role) === 'ADMIN';
 
   // ==================== FETCH USERS ====================
   const fetchUsers = useCallback(async (targetPage?: number) => {
@@ -388,6 +399,56 @@ export function AccountManagementView() {
     }
   };
 
+  // ==================== RESET PASSWORD ====================
+  const openResetPwdDialog = (user: UserRow) => {
+    setResetPwdDialogUser(user);
+    setResetPwdNewPassword('');
+    setResetPwdConfirmPassword('');
+    setResetPwdShowPassword(false);
+    setResetPwdDialogOpen(true);
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetPwdDialogUser) return;
+
+    if (!resetPwdNewPassword || resetPwdNewPassword.length < 6) {
+      toast.error('Le mot de passe doit contenir au moins 6 caractères');
+      return;
+    }
+
+    if (resetPwdNewPassword !== resetPwdConfirmPassword) {
+      toast.error('Les mots de passe ne correspondent pas');
+      return;
+    }
+
+    setResetPwdSaving(true);
+    try {
+      const res = await fetch('/api/admin/reset-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          userId: resetPwdDialogUser.id,
+          newPassword: resetPwdNewPassword,
+        }),
+      });
+
+      if (res.ok) {
+        toast.success(`Mot de passe de ${resetPwdDialogUser.name} réinitialisé avec succès`);
+        setResetPwdDialogOpen(false);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || 'Erreur lors de la réinitialisation');
+      }
+    } catch {
+      toast.error('Erreur réseau');
+    } finally {
+      setResetPwdSaving(false);
+    }
+  };
+
   // ==================== ROLE BADGE ====================
   const renderRoleBadge = (role: string) => {
     const badgeStyle = ROLE_BADGE_STYLES[role] || ROLE_BADGE_STYLES['UTILISATEUR'];
@@ -554,7 +615,8 @@ export function AccountManagementView() {
   // ==================== MOBILE CARD ====================
   const renderMobileCard = (user: UserRow) => {
     const isSelf = user.id === currentUser?.id;
-    const canDelete = isCurrentUserSuperAdmin && !isSelf;
+    const isTargetAdmin = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+    const canDelete = isCurrentUserAdmin && !isSelf && (isCurrentUserSuperAdmin || !isTargetAdmin);
 
     return (
       <Card key={user.id} className="p-4 gap-0">
@@ -594,6 +656,15 @@ export function AccountManagementView() {
           >
             <UserCog className="h-3 w-3" />
             Rôle
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs gap-1"
+            onClick={() => openResetPwdDialog(user)}
+          >
+            <KeyRound className="h-3 w-3" />
+            Mdp
           </Button>
           <div className="flex items-center gap-2">
             <Switch
@@ -645,7 +716,8 @@ export function AccountManagementView() {
         ) : (
           users.map((user) => {
             const isSelf = user.id === currentUser?.id;
-            const canDelete = isCurrentUserSuperAdmin && !isSelf;
+            const isTargetAdmin = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+            const canDelete = isCurrentUserAdmin && !isSelf && (isCurrentUserSuperAdmin || !isTargetAdmin);
 
             return (
               <TableRow key={user.id}>
@@ -682,6 +754,15 @@ export function AccountManagementView() {
                     >
                       <ShieldCheck className="h-3 w-3" />
                       Rôle
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => openResetPwdDialog(user)}
+                      title="Réinitialiser le mot de passe"
+                    >
+                      <KeyRound className="h-3 w-3" />
                     </Button>
                     <Switch
                       checked={user.isActive}
@@ -917,6 +998,113 @@ export function AccountManagementView() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ==================== RESET PASSWORD DIALOG ==================== */}
+      <Dialog open={resetPwdDialogOpen} onOpenChange={setResetPwdDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5 text-weds-blue" />
+              Réinitialiser le mot de passe
+            </DialogTitle>
+            <DialogDescription>
+              Définissez un nouveau mot de passe pour cet utilisateur
+            </DialogDescription>
+          </DialogHeader>
+
+          {resetPwdDialogUser && (
+            <div className="space-y-4 py-2">
+              {/* User info */}
+              <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
+                <div className="w-10 h-10 rounded-full bg-weds-blue-100 flex items-center justify-center shrink-0">
+                  <span className="text-weds-blue-700 font-bold text-sm">
+                    {resetPwdDialogUser.name?.charAt(0)?.toUpperCase() || 'U'}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <p className="font-medium text-sm">{resetPwdDialogUser.name}</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    <Mail className="h-3 w-3 inline mr-1" />
+                    {resetPwdDialogUser.email}
+                  </p>
+                </div>
+              </div>
+
+              {/* New password */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium" htmlFor="new-pwd">Nouveau mot de passe</label>
+                <div className="relative">
+                  <Input
+                    id="new-pwd"
+                    type={resetPwdShowPassword ? 'text' : 'password'}
+                    placeholder="Minimum 6 caractères"
+                    value={resetPwdNewPassword}
+                    onChange={(e) => setResetPwdNewPassword(e.target.value)}
+                    className="pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                    onClick={() => setResetPwdShowPassword(!resetPwdShowPassword)}
+                  >
+                    {resetPwdShowPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+                {resetPwdNewPassword && resetPwdNewPassword.length < 6 && (
+                  <p className="text-xs text-weds-red">Le mot de passe doit contenir au moins 6 caractères</p>
+                )}
+              </div>
+
+              {/* Confirm password */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium" htmlFor="confirm-pwd">Confirmer le mot de passe</label>
+                <Input
+                  id="confirm-pwd"
+                  type={resetPwdShowPassword ? 'text' : 'password'}
+                  placeholder="Confirmez le mot de passe"
+                  value={resetPwdConfirmPassword}
+                  onChange={(e) => setResetPwdConfirmPassword(e.target.value)}
+                />
+                {resetPwdConfirmPassword && resetPwdNewPassword !== resetPwdConfirmPassword && (
+                  <p className="text-xs text-weds-red">Les mots de passe ne correspondent pas</p>
+                )}
+              </div>
+
+              {/* Warning */}
+              <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-700">
+                  L&apos;utilisateur devra utiliser ce nouveau mot de passe pour se connecter. Assurez-vous de lui communiquer de manière sécurisée.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setResetPwdDialogOpen(false)}
+              disabled={resetPwdSaving}
+            >
+              Annuler
+            </Button>
+            <Button
+              onClick={handleResetPassword}
+              disabled={
+                resetPwdSaving ||
+                !resetPwdNewPassword ||
+                resetPwdNewPassword.length < 6 ||
+                resetPwdNewPassword !== resetPwdConfirmPassword
+              }
+              className="bg-weds-blue hover:bg-weds-blue-700 text-white"
+            >
+              {resetPwdSaving ? 'Enregistrement...' : 'Réinitialiser'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

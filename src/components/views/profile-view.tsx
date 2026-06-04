@@ -78,12 +78,27 @@ export function ProfileView() {
       try {
         const headers: Record<string, string> = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        // Fetch full user profile from /api/auth/me to get phone/location
+        try {
+          const meRes = await fetch('/api/auth/me', { headers });
+          if (meRes.ok) {
+            const meData = await meRes.json();
+            const meUser = meData.user;
+            if (meUser) {
+              setForm({
+                name: meUser.name || '',
+                email: meUser.email || '',
+                phone: meUser.phone || '',
+                location: meUser.location || '',
+              });
+            }
+          }
+        } catch {
+          // Silently handle - form will use defaults
+        }
+
         // Fetch badges and certificates - these may not exist yet, handle gracefully
-        const results = await Promise.allSettled([
-          fetch('/api/courses', { headers }),
-          fetch('/api/enrollments?withCertificates=true', { headers }),
-        ]);
-        // For now, just set empty arrays if APIs don't exist
         setBadges([]);
         setCertificates([]);
       } catch {
@@ -97,25 +112,50 @@ export function ProfileView() {
 
   useEffect(() => {
     if (user) {
-      queueMicrotask(() => setForm({
+      queueMicrotask(() => setForm((prev) => ({
         name: user.name || '',
         email: user.email || '',
-        phone: '',
-        location: '',
-      }));
+        // Keep phone/location if already loaded from /api/auth/me
+        phone: prev.phone || (user as Record<string, unknown>).phone as string || '',
+        location: prev.location || (user as Record<string, unknown>).location as string || '',
+      })));
     }
   }, [user]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      // Update locally for now since /api/profile doesn't exist
       if (user && token) {
-        const updatedUser = { ...user, name: form.name, email: form.email };
-        setAuth(updatedUser, token);
+        const res = await fetch('/api/auth/profile', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            name: form.name,
+            email: form.email,
+            phone: form.phone,
+            location: form.location,
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.user) {
+            setAuth(data.user, token);
+          } else {
+            // Fallback: update locally with form data
+            const updatedUser = { ...user, name: form.name, email: form.email, phone: form.phone, location: form.location };
+            setAuth(updatedUser, token);
+          }
+          setEditMode(false);
+          toast({ title: 'Profil mis à jour !' });
+        } else {
+          const data = await res.json().catch(() => ({}));
+          toast({ title: 'Erreur', description: data.error || 'Erreur lors de la mise à jour', variant: 'destructive' });
+        }
       }
-      setEditMode(false);
-      toast({ title: 'Profil mis à jour !' });
     } catch {
       toast({ title: 'Erreur', description: 'Erreur de connexion', variant: 'destructive' });
     } finally {

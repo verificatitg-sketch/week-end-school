@@ -275,11 +275,11 @@ export async function PATCH(request: Request) {
 
 /**
  * DELETE /api/admin/users
- * Delete a user (with cascade). SUPER_ADMIN only.
+ * Delete a user (with cascade). ADMIN can delete regular users; only SUPER_ADMIN can delete ADMIN/SUPER_ADMIN accounts.
  */
 export async function DELETE(request: Request) {
   try {
-    const authResult = await authenticateAdmin(request.headers, true);
+    const authResult = await authenticateAdmin(request.headers, false);
     if (authResult instanceof NextResponse) return authResult;
     const adminUser = authResult.user;
 
@@ -308,6 +308,17 @@ export async function DELETE(request: Request) {
       return NextResponse.json(
         { error: 'Utilisateur non trouvé' },
         { status: 404 }
+      );
+    }
+
+    // Only SUPER_ADMIN can delete ADMIN or SUPER_ADMIN accounts
+    if (
+      (targetUser.role_name === 'SUPER_ADMIN' || targetUser.role_name === 'ADMIN') &&
+      adminUser.role_name !== 'SUPER_ADMIN'
+    ) {
+      return NextResponse.json(
+        { error: 'Seul un Super Admin peut supprimer un compte Admin ou Super Admin' },
+        { status: 403 }
       );
     }
 

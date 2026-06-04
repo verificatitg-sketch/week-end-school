@@ -92,7 +92,13 @@ export async function GET(request: Request) {
       mentorProfile,
     };
 
-    return NextResponse.json({ user: userWithoutPassword });
+    // Ensure role is a string for the frontend (auth-store expects role?: string)
+    const responseUser = {
+      ...userWithoutPassword,
+      role: mappedUser.role?.name || dbUser.role_name || 'UTILISATEUR',
+    };
+
+    return NextResponse.json({ user: responseUser });
   } catch (error) {
     console.error('Get profile error:', error);
     return NextResponse.json(

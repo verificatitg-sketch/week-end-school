@@ -104,7 +104,11 @@ function PaixbotChat() {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ message: userMessage, language }),
+        body: JSON.stringify({
+          message: userMessage,
+          language,
+          history: messages.slice(-10),
+        }),
       });
       const data = await res.json();
       if (data.response) {

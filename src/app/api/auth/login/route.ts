@@ -46,10 +46,16 @@ export async function POST(request: Request) {
 
     const { password: _, ...mappedUser } = mapUserToApi(user)!;
 
+    // Ensure role is a string for the frontend (auth-store expects role?: string)
+    const responseUser = {
+      ...mappedUser,
+      role: mappedUser.role?.name || user.role_name || 'UTILISATEUR',
+    };
+
     return NextResponse.json({
       message: 'Login successful',
       token,
-      user: mappedUser,
+      user: responseUser,
     });
   } catch (error) {
     console.error('Login error:', error);
