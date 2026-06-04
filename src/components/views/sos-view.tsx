@@ -34,6 +34,8 @@ import {
   ShieldCheck,
   XCircle,
   Copy,
+  Heart,
+  ExternalLink,
 } from 'lucide-react';
 
 // Togo emergency numbers (fallback)
@@ -42,6 +44,16 @@ const EMERGENCY_NUMBERS_DATA = [
   { labelKey: 'sos.police', number: '117', icon: '👮' },
   { labelKey: 'sos.samu', number: '118', icon: '🚑' },
   { labelKey: 'sos.firefighters', number: '118', icon: '🚒' },
+];
+
+// VBG (Violences Basées sur le Genre) - Lignes Vertes du Togo
+const VBG_GREEN_LINES = [
+  { labelKey: 'sos.vbg.oneStopCenter', number: '8284', icon: '🏥', color: 'bg-green-600 hover:bg-green-700' },
+  { labelKey: 'sos.vbg.education', number: '8255', icon: '📚', color: 'bg-blue-600 hover:bg-blue-700' },
+  { labelKey: 'sos.vbg.actionSociale', number: '1011', icon: '👶', color: 'bg-purple-600 hover:bg-purple-700' },
+  { labelKey: 'sos.vbg.securite', number: '1014', icon: '🛡️', color: 'bg-orange-600 hover:bg-orange-700' },
+  { labelKey: 'sos.police', number: '117', icon: '👮', color: 'bg-slate-600 hover:bg-slate-700' },
+  { labelKey: 'sos.vbg.atbef', number: '8828', icon: '❤️', color: 'bg-pink-600 hover:bg-pink-700' },
 ];
 
 interface SOSAlert {
@@ -463,6 +475,43 @@ export function SOSView() {
               </Select>
             </div>
           </div>
+
+          {/* ==================== VBG GREEN LINES ==================== */}
+          <Card className="border-green-200 overflow-hidden">
+            <CardHeader className="bg-gradient-to-r from-green-600 to-green-700 text-white pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Heart className="h-5 w-5" />
+                {t('sos.vbg.title')}
+              </CardTitle>
+              <CardDescription className="text-green-100 text-xs">
+                {t('sos.vbg.subtitle')}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {VBG_GREEN_LINES.map((line) => (
+                  <a
+                    key={line.number}
+                    href={`tel:${line.number}`}
+                    className={`flex items-center gap-3 p-3 rounded-xl text-white text-sm transition-all hover:scale-[1.02] active:scale-[0.98] shadow-sm ${line.color}`}
+                  >
+                    <span className="text-xl shrink-0">{line.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-lg leading-tight">{line.number}</p>
+                      <p className="text-[10px] opacity-90 leading-tight">{t(line.labelKey)}</p>
+                    </div>
+                    <Phone className="h-4 w-4 shrink-0 opacity-70" />
+                  </a>
+                ))}
+              </div>
+              <div className="mt-3 p-2.5 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-[11px] text-green-800 leading-relaxed">
+                  <span className="font-bold">📌 {t('sos.vbg.noteLabel')}</span>{' '}
+                  {t('sos.vbg.note')}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Fallback external calls */}
           <Card>

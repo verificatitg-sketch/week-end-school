@@ -329,6 +329,17 @@ export const translations = {
     'sos.sosButtonAria': 'SOS Urgence - Appeler les secours',
     'sos.urgencyLabel': 'URGENCE',
 
+    // === VBG - Lignes Vertes ===
+    'sos.vbg.title': 'Lignes Vertes — Violences Basées sur le Genre',
+    'sos.vbg.subtitle': 'Numéros verts gratuits pour dénoncer les VBG et obtenir de l\'aide',
+    'sos.vbg.oneStopCenter': 'One Stop Center — Tout type de VBG',
+    'sos.vbg.education': 'Min. Éducation — Violences scolaires',
+    'sos.vbg.actionSociale': 'Min. Action Sociale — Violences contre les mineur(e)s',
+    'sos.vbg.securite': 'Min. Sécurité — Viol et tentatives de viol',
+    'sos.vbg.atbef': 'ATBEF — Bien-Être Familial',
+    'sos.vbg.noteLabel': 'Appel gratuit :',
+    'sos.vbg.note': 'Chaque dénonciation de violences basées sur le genre est un pas vers la justice et la protection des victimes. Ne restez pas spectateur, agissez !',
+
     // === ADMIN ===
     'admin.title': 'Administration',
     'admin.subtitle': 'Tableau de bord administratif — Vue d\'ensemble de la plateforme',
@@ -686,6 +697,17 @@ export const translations = {
     'sos.sosButtonAria': 'SOS Emergency - Call for help',
     'sos.urgencyLabel': 'EMERGENCY',
 
+    // === VBG - Green Lines ===
+    'sos.vbg.title': 'Green Lines — Gender-Based Violence',
+    'sos.vbg.subtitle': 'Free helplines to report GBV and get help',
+    'sos.vbg.oneStopCenter': 'One Stop Center — All types of GBV',
+    'sos.vbg.education': 'Min. Education — School violence',
+    'sos.vbg.actionSociale': 'Min. Social Affairs — Violence against minors',
+    'sos.vbg.securite': 'Min. Security — Rape & attempted rape',
+    'sos.vbg.atbef': 'ATBEF — Family Well-Being',
+    'sos.vbg.noteLabel': 'Free call:',
+    'sos.vbg.note': 'Every report of gender-based violence is a step toward justice and victim protection. Don\'t be a bystander, take action!',
+
     // === ADMIN ===
     'admin.title': 'Administration',
     'admin.subtitle': 'Administrative dashboard — Platform overview',
@@ -913,6 +935,17 @@ export const translations = {
     'sos.defaultVictim': 'Amesi le xexeame',
     'sos.sosButtonAria': 'SOS Xexeame - Yɔ dɔdzikpɔha',
     'sos.urgencyLabel': 'XEXEAAME',
+
+    // === VBG - Lignes Vertes ===
+    'sos.vbg.title': 'Lignes Vertes — Nudzɔdzɔ ɖe ŋutsu kple nyɔnu domenu',
+    'sos.vbg.subtitle': 'Numer gbegbɔgɔɖe na tsɔ ɖe ale xemeye nudzɔdzɔ le domenu',
+    'sos.vbg.oneStopCenter': 'One Stop Center — Nudzɔdzɔ ɖe domenu ƒe dzesi',
+    'sos.vbg.education': 'Min. Éducation — Sukunu nudzɔdzɔ',
+    'sos.vbg.actionSociale': 'Min. Action Sociale — Nudzɔdzɔ ɖe vi suewo ŋu',
+    'sos.vbg.securite': 'Min. Sécurité — Tɔtɔ kple tɔtɔteƒe',
+    'sos.vbg.atbef': 'ATBEF — Aƒeme nyuiye',
+    'sos.vbg.noteLabel': 'Yɔ gbegbɔgɔ:',
+    'sos.vbg.note': 'Tsitretsiɖeŋu ɖe nudzɔdzɔ ɖe ŋutsu kple nyɔnu domenu ŋu nye aʋa ɖe kpeɖeŋu kple dzɔdzɔŋutinɔme. Nàkeŋke eye nàwɔ nusi wòateŋu!',
 
     // === ADMIN ===
     'admin.title': 'Dɔwɔƒe',
@@ -1162,6 +1195,17 @@ export const translations = {
     'sos.defaultVictim': 'Amɛ nɛ yɛlɩ',
     'sos.sosButtonAria': 'SOS Yɛlɩ - Yɩ dɔdzikpɔha',
     'sos.urgencyLabel': 'YƐLƖ',
+
+    // === VBG - Lignes Vertes ===
+    'sos.vbg.title': 'Lignes Vertes — Pʋyʋɔtʋ nɛ pʋyʋ kɛ̄ɩ̄',
+    'sos.vbg.subtitle': 'Numer gbegbɔgɔɖe na tsɔ ɖe ale ye pʋyʋɔtʋ le',
+    'sos.vbg.oneStopCenter': 'One Stop Center — Pʋyʋɔtʋ fɛɛɩ',
+    'sos.vbg.education': 'Min. Éducation — Sukunu pʋyʋɔtʋ',
+    'sos.vbg.actionSociale': 'Min. Action Sociale — Pʋyʋɔtʋ ɖe vi suewo ŋu',
+    'sos.vbg.securite': 'Min. Sécurité — Kɩɖɔ kple kɩɖɔteƒe',
+    'sos.vbg.atbef': 'ATBEF — Aƒeme nyuiye',
+    'sos.vbg.noteLabel': 'Yɩ gbegbɔgɔ:',
+    'sos.vbg.note': 'Pʋsɩ nɛ pʋyʋɔtʋ ɖe ŋutsu kple nyɔnu domenu nye aʋa ɖe dzɔdzɔŋutinɔme. Mà tɛtɩ, wɔ nusi wòateŋu!',
 
     // === ADMIN ===
     'admin.title': 'Kanɩsɩbɩ lɩm',
