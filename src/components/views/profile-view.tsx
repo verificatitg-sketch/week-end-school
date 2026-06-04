@@ -28,6 +28,8 @@ import {
   Star,
   BookOpen,
   Palette,
+  Lock,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface UserBadge {
@@ -61,6 +63,15 @@ export function ProfileView() {
   const [badges, setBadges] = useState<UserBadge[]>([]);
   const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [loadingExtras, setLoadingExtras] = useState(true);
+
+  // Password change state
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
 
   useEffect(() => {
     const fetchExtras = async () => {
@@ -114,6 +125,55 @@ export function ProfileView() {
 
   const handleLanguageChange = (lang: 'fr' | 'en' | 'ew' | 'kab') => {
     appStore.setLanguage(lang);
+  };
+
+  const handlePasswordChange = async () => {
+    setPasswordSuccess(false);
+
+    if (!passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
+      toast({ title: 'Erreur', description: 'Veuillez remplir tous les champs', variant: 'destructive' });
+      return;
+    }
+
+    if (passwordForm.newPassword.length < 6) {
+      toast({ title: 'Erreur', description: 'Le nouveau mot de passe doit contenir au moins 6 caractères', variant: 'destructive' });
+      return;
+    }
+
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      toast({ title: 'Erreur', description: 'Les mots de passe ne correspondent pas', variant: 'destructive' });
+      return;
+    }
+
+    setPasswordSaving(true);
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          currentPassword: passwordForm.currentPassword,
+          newPassword: passwordForm.newPassword,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        setPasswordSuccess(true);
+        setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+        toast({ title: 'Mot de passe modifié avec succès !' });
+        setTimeout(() => setPasswordSuccess(false), 3000);
+      } else {
+        toast({ title: 'Erreur', description: data.error || 'Erreur lors du changement de mot de passe', variant: 'destructive' });
+      }
+    } catch {
+      toast({ title: 'Erreur', description: 'Erreur de connexion', variant: 'destructive' });
+    } finally {
+      setPasswordSaving(false);
+    }
   };
 
   const LANGUAGES = [
@@ -355,6 +415,76 @@ export function ProfileView() {
               onCheckedChange={appStore.setScreenReader}
               aria-label="Lecteur d'écran"
             />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Change Password */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Lock className="h-5 w-5 text-weds-blue" />
+            Changer le mot de passe
+          </CardTitle>
+          <CardDescription>Modifiez votre mot de passe pour sécuriser votre compte</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="current-password">Mot de passe actuel</Label>
+              <Input
+                id="current-password"
+                type="password"
+                placeholder="••••••••"
+                value={passwordForm.currentPassword}
+                onChange={(e) => setPasswordForm((p) => ({ ...p, currentPassword: e.target.value }))}
+                aria-label="Mot de passe actuel"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-password">Nouveau mot de passe</Label>
+              <Input
+                id="new-password"
+                type="password"
+                placeholder="••••••••"
+                value={passwordForm.newPassword}
+                onChange={(e) => setPasswordForm((p) => ({ ...p, newPassword: e.target.value }))}
+                aria-label="Nouveau mot de passe"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirm-password">Confirmer le mot de passe</Label>
+              <Input
+                id="confirm-password"
+                type="password"
+                placeholder="••••••••"
+                value={passwordForm.confirmPassword}
+                onChange={(e) => setPasswordForm((p) => ({ ...p, confirmPassword: e.target.value }))}
+                aria-label="Confirmer le mot de passe"
+              />
+            </div>
+          </div>
+          {passwordForm.newPassword && passwordForm.confirmPassword && passwordForm.newPassword !== passwordForm.confirmPassword && (
+            <p className="text-xs text-weds-red">Les mots de passe ne correspondent pas</p>
+          )}
+          {passwordForm.newPassword && passwordForm.newPassword.length < 6 && (
+            <p className="text-xs text-weds-red">Le mot de passe doit contenir au moins 6 caractères</p>
+          )}
+          <div className="flex items-center gap-3">
+            <Button
+              className="bg-weds-blue hover:bg-weds-blue-700 text-white"
+              onClick={handlePasswordChange}
+              disabled={passwordSaving || !passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword}
+            >
+              {passwordSaving ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : passwordSuccess ? (
+                <CheckCircle2 className="h-4 w-4 mr-2" />
+              ) : (
+                <Lock className="h-4 w-4 mr-2" />
+              )}
+              {passwordSaving ? 'Enregistrement...' : passwordSuccess ? 'Modifié !' : 'Changer le mot de passe'}
+            </Button>
           </div>
         </CardContent>
       </Card>

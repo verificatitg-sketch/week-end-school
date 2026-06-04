@@ -275,7 +275,7 @@ export async function PATCH(request: Request) {
 
 /**
  * DELETE /api/admin/users
- * Delete a user. SUPER_ADMIN only.
+ * Delete a user (with cascade). SUPER_ADMIN only.
  */
 export async function DELETE(request: Request) {
   try {
@@ -296,7 +296,7 @@ export async function DELETE(request: Request) {
     // Self-protection: cannot delete yourself
     if (userId === adminUser.id) {
       return NextResponse.json(
-        { error: 'You cannot delete your own account' },
+        { error: 'Vous ne pouvez pas supprimer votre propre compte' },
         { status: 400 }
       );
     }
@@ -306,27 +306,88 @@ export async function DELETE(request: Request) {
 
     if (!targetUser) {
       return NextResponse.json(
-        { error: 'User not found' },
+        { error: 'Utilisateur non trouvé' },
         { status: 404 }
       );
     }
 
-    // Delete the user
+    // Delete all related records first (cascade manually for Turso)
+    const cascadeDeletes = [
+      { table: 'user_badges', column: 'user_id' },
+      { table: 'lesson_progress', column: 'user_id' },
+      { table: 'quiz_results', column: 'user_id' },
+      { table: 'certificates', column: 'user_id' },
+      { table: 'enrollments', column: 'user_id' },
+      { table: 'notifications', column: 'user_id' },
+      { table: 'chatbot_logs', column: 'user_id' },
+      { table: 'audit_logs', column: 'user_id' },
+      { table: 'comments', column: 'user_id' },
+      { table: 'likes', column: 'user_id' },
+      { table: 'community_posts', column: 'user_id' },
+      { table: 'group_members', column: 'user_id' },
+      { table: 'messages', column: 'sender_id' },
+      { table: 'messages', column: 'receiver_id' },
+      { table: 'applications', column: 'user_id' },
+      { table: 'report_attachments', column: 'report_id', subQuery: 'SELECT id FROM reports WHERE user_id = ?' },
+      { table: 'reports', column: 'user_id' },
+      { table: 'sos_gps_updates', column: 'alert_id', subQuery: 'SELECT id FROM sos_alerts WHERE user_id = ?' },
+      { table: 'sos_call_logs', column: 'alert_id', subQuery: 'SELECT id FROM sos_alerts WHERE user_id = ?' },
+      { table: 'sos_interventions', column: 'responder_id' },
+      { table: 'sos_interventions', column: 'alert_id', subQuery: 'SELECT id FROM sos_alerts WHERE user_id = ?' },
+      { table: 'sos_alerts', column: 'user_id' },
+      { table: 'mentor_requests', column: 'mentee_id' },
+      { table: 'mentor_requests', column: 'mentor_id', subQuery: 'SELECT id FROM mentors WHERE user_id = ?' },
+      { table: 'mentors', column: 'user_id' },
+    ];
+
+    for (const del of cascadeDeletes) {
+      try {
+        if (del.subQuery) {
+          await db.execute({
+            sql: `DELETE FROM ${del.table} WHERE ${del.column} IN (${del.subQuery})`,
+            args: [userId],
+          });
+        } else {
+          await db.execute({
+            sql: `DELETE FROM ${del.table} WHERE ${del.column} = ?`,
+            args: [userId],
+          });
+        }
+      } catch {
+        // Table or column might not exist, skip silently
+      }
+    }
+
+    // Also delete SOS alerts where user is assigned_admin
+    try {
+      await db.execute({
+        sql: "UPDATE sos_alerts SET assigned_admin_id = NULL WHERE assigned_admin_id = ?",
+        args: [userId],
+      });
+      await db.execute({
+        sql: "UPDATE sos_alerts SET fallback_admin_id = NULL WHERE fallback_admin_id = ?",
+        args: [userId],
+      });
+    } catch {
+      // Ignore
+    }
+
+    // Finally delete the user
     await turso.user.delete({ id: userId });
 
     // Create audit log
-    await turso.insert('audit_logs', mapUserToDb({
-      userId: adminUser.id,
+    await turso.insert('audit_logs', {
+      user_id: adminUser.id,
       action: 'DELETE_USER',
       resource: 'USER',
       details: JSON.stringify({ userId, email: targetUser.email, name: targetUser.name }),
-    }));
+    });
 
-    return NextResponse.json({ message: 'User deleted successfully' });
+    return NextResponse.json({ message: 'Utilisateur supprimé avec succès' });
   } catch (error) {
     console.error('Delete admin users error:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Erreur lors de la suppression: ' + (error instanceof Error ? error.message : 'Erreur serveur') },
       { status: 500 }
     );
   }
